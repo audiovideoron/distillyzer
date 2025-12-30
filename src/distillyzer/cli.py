@@ -238,13 +238,19 @@ def _generate_index_html(items: list[dict], output_path: Path) -> None:
         "a .timestamp { font-family: monospace; color: #0066cc; margin-right: 1em; }",
         "a:hover .timestamp { text-decoration: underline; }",
         ".preview { color: #333; }",
+        "details { margin: 1em 0; }",
+        "summary { cursor: pointer; font-size: 1.3em; font-weight: 600; color: #555; padding: 0.5em; background: #f0f0f0; border-radius: 4px; }",
+        "summary:hover { background: #e8e8e8; }",
+        "summary .chunk-count { font-size: 0.7em; font-weight: normal; color: #888; margin-left: 0.5em; }",
         "</style>",
         "</head><body>",
         "<h1>Distillyzer Knowledge Index</h1>",
     ]
 
     for item in items:
-        html_parts.append(f"<h2>{item['title']}</h2>")
+        chunk_count = len(item["chunks"])
+        html_parts.append("<details>")
+        html_parts.append(f"<summary>{item['title']}<span class='chunk-count'>({chunk_count} chunks)</span></summary>")
         is_youtube = "youtube.com" in (item["url"] or "") or "youtu.be" in (item["url"] or "")
         html_parts.append("<ul>")
 
@@ -270,6 +276,7 @@ def _generate_index_html(items: list[dict], output_path: Path) -> None:
                 )
 
         html_parts.append("</ul>")
+        html_parts.append("</details>")
 
     html_parts.extend(["</body></html>"])
     output_path.write_text("\n".join(html_parts))
