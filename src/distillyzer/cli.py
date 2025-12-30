@@ -200,6 +200,107 @@ def chat():
         console.print("\n[yellow]Chat ended.[/yellow]")
 
 
+def _format_timestamp(seconds: float | None) -> str:
+    """Format seconds as MM:SS."""
+    if seconds is None:
+        return "0:00"
+    s = int(seconds)
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def _make_timestamp_link(url: str, timestamp: float | None) -> str:
+    """Create a URL with timestamp for YouTube, or plain URL for others."""
+    if timestamp is None:
+        return url
+    if "youtube.com" in url or "youtu.be" in url:
+        # YouTube supports &t=SECONDS
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}t={int(timestamp)}"
+    # Other sites: just return the URL (timestamp shown separately)
+    return url
+
+
+def _generate_index_html(items: list[dict], output_path: Path) -> None:
+    """Generate HTML index file."""
+    html_parts = [
+        "<!DOCTYPE html>",
+        "<html><head>",
+        "<meta charset='utf-8'>",
+        "<title>Distillyzer Index</title>",
+        "<style>",
+        "body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; line-height: 1.6; }",
+        "h1 { color: #333; }",
+        "h2 { color: #555; margin-top: 2em; border-bottom: 1px solid #ddd; padding-bottom: 0.3em; }",
+        "ul { list-style: none; padding: 0; }",
+        "li { margin: 0.5em 0; padding: 0.5em; background: #f9f9f9; border-radius: 4px; }",
+        "a { color: #0066cc; text-decoration: none; }",
+        "a:hover { text-decoration: underline; }",
+        "a .timestamp { font-family: monospace; color: #0066cc; margin-right: 1em; }",
+        "a:hover .timestamp { text-decoration: underline; }",
+        ".preview { color: #333; }",
+        "</style>",
+        "</head><body>",
+        "<h1>Distillyzer Knowledge Index</h1>",
+    ]
+
+    for item in items:
+        html_parts.append(f"<h2>{item['title']}</h2>")
+        is_youtube = "youtube.com" in (item["url"] or "") or "youtu.be" in (item["url"] or "")
+        html_parts.append("<ul>")
+
+        for chunk in item["chunks"]:
+            ts = chunk["timestamp_start"]
+            ts_str = _format_timestamp(ts)
+            preview = chunk["content"][:80].replace("<", "&lt;").replace(">", "&gt;")
+            if len(chunk["content"]) > 80:
+                preview += "..."
+
+            if is_youtube and item["url"]:
+                link = _make_timestamp_link(item["url"], ts)
+                html_parts.append(
+                    f'<li><a href="{link}"><span class="timestamp">{ts_str}</span></a>'
+                    f'<span class="preview">{preview}</span></li>'
+                )
+            else:
+                # Non-YouTube: link to page, show timestamp for manual navigation
+                link = item["url"] or "#"
+                html_parts.append(
+                    f'<li><a href="{link}"><span class="timestamp">{ts_str}</span></a>'
+                    f'<span class="preview">{preview}</span></li>'
+                )
+
+        html_parts.append("</ul>")
+
+    html_parts.extend(["</body></html>"])
+    output_path.write_text("\n".join(html_parts))
+
+
+@app.command()
+def index(
+    item_id: int = typer.Option(None, "--item", "-i", help="Generate index for specific item ID"),
+    output: str = typer.Option("index.html", "--output", "-o", help="Output file path"),
+):
+    """Generate HTML index with timestamp links."""
+    console.print("[yellow]Generating index...[/yellow]\n")
+
+    try:
+        items = db.get_items_with_chunks(item_id)
+        if not items:
+            console.print("[dim]No items found[/dim]")
+            return
+
+        output_path = Path(output)
+        _generate_index_html(items, output_path)
+
+        total_chunks = sum(len(item["chunks"]) for item in items)
+        console.print(f"[green]Generated:[/green] {output_path}")
+        console.print(f"[dim]Items:[/dim] {len(items)}")
+        console.print(f"[dim]Chunks:[/dim] {total_chunks}")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+
 @app.command()
 def stats():
     """Show statistics about your knowledge base."""

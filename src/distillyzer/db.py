@@ -198,6 +198,51 @@ def search_chunks(query_embedding: list[float], limit: int = 10) -> list[dict]:
             ]
 
 
+# --- Index ---
+
+def get_items_with_chunks(item_id: int | None = None) -> list[dict]:
+    """Get items with their chunks for index generation."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if item_id:
+                cur.execute(
+                    "SELECT id, type, title, url, metadata FROM items WHERE id = %s",
+                    (item_id,),
+                )
+            else:
+                cur.execute("SELECT id, type, title, url, metadata FROM items ORDER BY id")
+            items = []
+            for row in cur.fetchall():
+                item = {
+                    "id": row[0],
+                    "type": row[1],
+                    "title": row[2],
+                    "url": row[3],
+                    "metadata": row[4] or {},
+                }
+                # Get chunks for this item
+                cur.execute(
+                    """
+                    SELECT chunk_index, content, timestamp_start, timestamp_end
+                    FROM chunks
+                    WHERE item_id = %s
+                    ORDER BY chunk_index
+                    """,
+                    (item["id"],),
+                )
+                item["chunks"] = [
+                    {
+                        "chunk_index": c[0],
+                        "content": c[1],
+                        "timestamp_start": c[2],
+                        "timestamp_end": c[3],
+                    }
+                    for c in cur.fetchall()
+                ]
+                items.append(item)
+            return items
+
+
 # --- Stats ---
 
 def get_stats() -> dict:
