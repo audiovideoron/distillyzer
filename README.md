@@ -1,129 +1,99 @@
 # Distillyzer
 
-Personal learning accelerator. Harvest knowledge from YouTube and GitHub, store it, query it, use it.
+Build a personal knowledge base from YouTube videos and GitHub repos. Transcribe, embed, and semantically search everything you care about.
 
-## What It Does
+## Why
 
-1. **Search** - Find YouTube content without the garbage UI
-2. **Harvest** - Download videos, transcribe, clone repos
-3. **Store** - Chunk and embed in PostgreSQL + pgvector
-4. **Query** - Semantic search across everything you've collected
-5. **Generate** - (Optional) Create outputs: posts, slides, docs
+YouTube's search is optimized for engagement, not learning. You watch a great 2-hour tutorial, forget where they explained that one thing, and spend 20 minutes scrubbing. GitHub repos have answers buried in code you'll never find with grep.
 
-## Use Cases
+Distillyzer extracts knowledge from video and code, chunks it with timestamps, embeds it in a vector database, and lets you query it conversationally.
 
-- Research a topic (noise reduction, agentic engineering, WWII Eastern Front)
-- Follow an expert (harvest their channel + repos)
-- Query while building ("How did Dan implement auth?")
-- Feed context to Claude for project work
-
-## Tech Stack
-
-| Layer | Tool |
-|-------|------|
-| YouTube search/download | yt-dlp |
-| Transcription | OpenAI Whisper API |
-| Embeddings | OpenAI text-embedding-3-small |
-| Vector storage | PostgreSQL + pgvector |
-| LLM queries | Claude API |
-| GitHub | gitpython |
-| CLI | Typer |
-| Language | Python 3.12 |
-
-## Project Structure
+## How It Works
 
 ```
-distillyzer/
-├── src/distillyzer/
-│   ├── cli.py        # Typer CLI commands
-│   ├── harvest.py    # YouTube download + GitHub clone
-│   ├── transcribe.py # Whisper API integration
-│   ├── embed.py      # Chunking + embeddings
-│   ├── query.py      # Semantic search + Claude
-│   └── db.py         # PostgreSQL + pgvector
-├── tests/
-├── pyproject.toml
-└── README.md
+YouTube URL → yt-dlp → Whisper API → Chunks with timestamps → Embeddings → PostgreSQL/pgvector
+GitHub URL  → git clone → Parse files → Chunks → Embeddings → PostgreSQL/pgvector
+                                                                      ↓
+                                              Your question → Embedding → Similarity search → Claude → Answer with sources
 ```
 
-## CLI Design (Draft)
+## Quick Start
 
 ```bash
-# Search YouTube
-dz search "python async await" --limit 10
+# Install
+git clone https://github.com/audiovideoron/distillyzer
+cd distillyzer
+uv venv && source .venv/bin/activate
+uv pip install -e .
+
+# Set up PostgreSQL with pgvector
+createdb distillyzer
+psql distillyzer < schema.sql
+
+# Configure
+cp .env.example .env
+# Edit .env with your OPENAI_API_KEY and ANTHROPIC_API_KEY
 
 # Harvest a video
-dz harvest https://youtube.com/watch?v=xxx
+dz harvest https://youtube.com/watch?v=...
 
-# Harvest a channel
-dz harvest-channel @IndieDevDan --limit 50
+# Query your knowledge
+dz query "how does the auth system work?"
 
-# Harvest a GitHub repo
-dz harvest-repo https://github.com/user/project
-
-# Query your knowledge base
-dz query "how does async/await work in Python?"
-
-# Interactive chat mode
+# Or chat interactively
 dz chat
 ```
 
-## Database Schema (Draft)
+## Commands
 
-```sql
--- Sources (channels, repos)
-CREATE TABLE sources (
-    id SERIAL PRIMARY KEY,
-    type VARCHAR(20) NOT NULL, -- 'youtube_channel', 'github_repo'
-    name VARCHAR(255) NOT NULL,
-    url TEXT NOT NULL,
-    metadata JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+| Command | Description |
+|---------|-------------|
+| `dz search "topic"` | Search YouTube without the clutter |
+| `dz harvest <url>` | Download, transcribe, and embed a video or repo |
+| `dz harvest-channel <url>` | List videos from a channel for selective harvesting |
+| `dz query "question"` | Semantic search with Claude-generated answers |
+| `dz chat` | Interactive conversation with your knowledge base |
+| `dz stats` | Show what's in your knowledge base |
 
--- Content items (videos, files)
-CREATE TABLE items (
-    id SERIAL PRIMARY KEY,
-    source_id INTEGER REFERENCES sources(id),
-    type VARCHAR(20) NOT NULL, -- 'video', 'code_file'
-    title VARCHAR(500),
-    url TEXT,
-    metadata JSONB,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Chunks (searchable segments)
-CREATE TABLE chunks (
-    id SERIAL PRIMARY KEY,
-    item_id INTEGER REFERENCES items(id),
-    content TEXT NOT NULL,
-    chunk_index INTEGER,
-    timestamp_start FLOAT, -- for video chunks
-    timestamp_end FLOAT,
-    embedding vector(1536),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Index for similarity search
-CREATE INDEX ON chunks USING ivfflat (embedding vector_cosine_ops);
-```
-
-## Environment Variables
-
-```
-DATABASE_URL=postgresql://user:pass@localhost/distillyzer
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-## Development
+## Example
 
 ```bash
-cd ~/distillyzer
-source .venv/bin/activate
-uv pip install -e ".[dev]"
+$ dz query "What are the core principles of agentic coding?"
+
+╭─────────────────────── Answer ───────────────────────╮
+│ Based on the sources, agentic coding centers on      │
+│ "The Core Four": Context, Model, Prompt, and Tools.  │
+│ The key shift is from writing code to orchestrating  │
+│ systems that write code on your behalf...            │
+╰──────────────────────────────────────────────────────╯
+
+Sources:
+  1. TAC: Hello Agentic Coding @ 13:17 (sim: 0.63)
+  2. TAC: Hello Agentic Coding @ 20:05 (sim: 0.61)
 ```
 
-## Status
+## Tech Stack
 
-Early design phase. Not yet functional.
+- **yt-dlp** - YouTube download
+- **OpenAI Whisper API** - Transcription with timestamps
+- **OpenAI text-embedding-3-small** - 1536-dim embeddings
+- **PostgreSQL + pgvector** - Vector similarity search
+- **Claude API** - Answer generation
+- **Typer + Rich** - CLI
+
+## Requirements
+
+- Python 3.12+
+- PostgreSQL with pgvector extension
+- yt-dlp (`brew install yt-dlp`)
+- ffmpeg (`brew install ffmpeg`)
+- OpenAI API key (for Whisper + embeddings)
+- Anthropic API key (for Claude queries)
+
+## Privacy
+
+All data stays local. Videos are transcribed via API but the transcripts and embeddings live in your PostgreSQL database. Nothing is stored remotely or shared.
+
+## License
+
+MIT

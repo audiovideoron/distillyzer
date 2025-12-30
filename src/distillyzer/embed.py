@@ -1,0 +1,222 @@
+"""Chunking and embedding using OpenAI API."""
+
+import os
+
+import tiktoken
+from openai import OpenAI
+from dotenv import load_dotenv
+
+from . import db
+
+load_dotenv()
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_DIM = 1536
+MAX_TOKENS = 8000  # Leave buffer for safety
+
+
+def count_tokens(text: str, model: str = "cl100k_base") -> int:
+    """Count tokens in text using tiktoken."""
+    enc = tiktoken.get_encoding(model)
+    return len(enc.encode(text))
+
+
+def chunk_text(
+    text: str,
+    max_tokens: int = 500,
+    overlap_tokens: int = 50,
+) -> list[str]:
+    """
+    Split text into chunks of approximately max_tokens.
+    Uses sentence boundaries when possible.
+    """
+    if not text.strip():
+        return []
+
+    enc = tiktoken.get_encoding("cl100k_base")
+    tokens = enc.encode(text)
+
+    if len(tokens) <= max_tokens:
+        return [text]
+
+    # Split by sentences first
+    sentences = text.replace("\n", " ").split(". ")
+    chunks = []
+    current_chunk = []
+    current_tokens = 0
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        if not sentence.endswith("."):
+            sentence += "."
+
+        sentence_tokens = len(enc.encode(sentence))
+
+        if current_tokens + sentence_tokens > max_tokens and current_chunk:
+            # Save current chunk
+            chunks.append(" ".join(current_chunk))
+
+            # Start new chunk with overlap (last few sentences)
+            overlap_text = ""
+            overlap_count = 0
+            for s in reversed(current_chunk):
+                if overlap_count + len(enc.encode(s)) < overlap_tokens:
+                    overlap_text = s + " " + overlap_text
+                    overlap_count += len(enc.encode(s))
+                else:
+                    break
+
+            current_chunk = [overlap_text.strip()] if overlap_text.strip() else []
+            current_tokens = overlap_count
+
+        current_chunk.append(sentence)
+        current_tokens += sentence_tokens
+
+    # Don't forget the last chunk
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    return chunks
+
+
+def chunk_code(text: str, max_tokens: int = 500) -> list[str]:
+    """
+    Split code into chunks, trying to preserve function/class boundaries.
+    """
+    if not text.strip():
+        return []
+
+    enc = tiktoken.get_encoding("cl100k_base")
+
+    if len(enc.encode(text)) <= max_tokens:
+        return [text]
+
+    # Split by double newlines (paragraph/function boundaries)
+    blocks = text.split("\n\n")
+    chunks = []
+    current_chunk = []
+    current_tokens = 0
+
+    for block in blocks:
+        block_tokens = len(enc.encode(block))
+
+        if block_tokens > max_tokens:
+            # Block too large, split by lines
+            if current_chunk:
+                chunks.append("\n\n".join(current_chunk))
+                current_chunk = []
+                current_tokens = 0
+
+            lines = block.split("\n")
+            line_chunk = []
+            line_tokens = 0
+            for line in lines:
+                lt = len(enc.encode(line))
+                if line_tokens + lt > max_tokens and line_chunk:
+                    chunks.append("\n".join(line_chunk))
+                    line_chunk = []
+                    line_tokens = 0
+                line_chunk.append(line)
+                line_tokens += lt
+            if line_chunk:
+                chunks.append("\n".join(line_chunk))
+        elif current_tokens + block_tokens > max_tokens:
+            chunks.append("\n\n".join(current_chunk))
+            current_chunk = [block]
+            current_tokens = block_tokens
+        else:
+            current_chunk.append(block)
+            current_tokens += block_tokens
+
+    if current_chunk:
+        chunks.append("\n\n".join(current_chunk))
+
+    return chunks
+
+
+def get_embedding(text: str) -> list[float]:
+    """Get embedding for a single text using OpenAI API."""
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
+    )
+    return response.data[0].embedding
+
+
+def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
+    """Get embeddings for multiple texts in a single API call."""
+    if not texts:
+        return []
+
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=texts,
+    )
+    return [item.embedding for item in response.data]
+
+
+def embed_transcript_chunks(
+    item_id: int,
+    timed_chunks: list[dict],
+) -> int:
+    """
+    Embed transcript chunks and store in DB.
+    timed_chunks should have: text, start, end
+    Returns number of chunks stored.
+    """
+    if not timed_chunks:
+        return 0
+
+    texts = [c["text"] for c in timed_chunks]
+    embeddings = get_embeddings_batch(texts)
+
+    db_chunks = []
+    for i, (chunk, embedding) in enumerate(zip(timed_chunks, embeddings)):
+        db_chunks.append({
+            "item_id": item_id,
+            "content": chunk["text"],
+            "chunk_index": i,
+            "timestamp_start": chunk.get("start"),
+            "timestamp_end": chunk.get("end"),
+            "embedding": embedding,
+        })
+
+    db.create_chunks_batch(db_chunks)
+    return len(db_chunks)
+
+
+def embed_text_content(
+    item_id: int,
+    text: str,
+    is_code: bool = False,
+) -> int:
+    """
+    Chunk and embed text content (transcript or code).
+    Returns number of chunks stored.
+    """
+    if is_code:
+        chunks = chunk_code(text)
+    else:
+        chunks = chunk_text(text)
+
+    if not chunks:
+        return 0
+
+    embeddings = get_embeddings_batch(chunks)
+
+    db_chunks = []
+    for i, (content, embedding) in enumerate(zip(chunks, embeddings)):
+        db_chunks.append({
+            "item_id": item_id,
+            "content": content,
+            "chunk_index": i,
+            "timestamp_start": None,
+            "timestamp_end": None,
+            "embedding": embedding,
+        })
+
+    db.create_chunks_batch(db_chunks)
+    return len(db_chunks)

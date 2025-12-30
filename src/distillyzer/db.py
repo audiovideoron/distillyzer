@@ -1,0 +1,217 @@
+"""Database operations for Distillyzer."""
+
+import os
+from contextlib import contextmanager
+from typing import Generator
+
+import numpy as np
+import psycopg
+from psycopg.types.json import Jsonb
+from pgvector.psycopg import register_vector
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/distillyzer")
+
+
+@contextmanager
+def get_connection() -> Generator[psycopg.Connection, None, None]:
+    """Get a database connection with pgvector support."""
+    conn = psycopg.connect(DATABASE_URL)
+    register_vector(conn)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+# --- Sources ---
+
+def create_source(type: str, name: str, url: str, metadata: dict | None = None) -> int:
+    """Create a source (channel, repo) and return its ID."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO sources (type, name, url, metadata)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (type, name, url, Jsonb(metadata) if metadata else None),
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return result[0]
+
+
+def get_source_by_url(url: str) -> dict | None:
+    """Get a source by URL."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, type, name, url, metadata FROM sources WHERE url = %s",
+                (url,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "type": row[1],
+                    "name": row[2],
+                    "url": row[3],
+                    "metadata": row[4],
+                }
+            return None
+
+
+# --- Items ---
+
+def create_item(
+    source_id: int | None,
+    type: str,
+    title: str,
+    url: str | None = None,
+    metadata: dict | None = None,
+) -> int:
+    """Create an item (video, file) and return its ID."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO items (source_id, type, title, url, metadata)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (source_id, type, title, url, Jsonb(metadata) if metadata else None),
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return result[0]
+
+
+def get_item_by_url(url: str) -> dict | None:
+    """Get an item by URL."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, source_id, type, title, url, metadata FROM items WHERE url = %s",
+                (url,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "source_id": row[1],
+                    "type": row[2],
+                    "title": row[3],
+                    "url": row[4],
+                    "metadata": row[5],
+                }
+            return None
+
+
+# --- Chunks ---
+
+def create_chunk(
+    item_id: int,
+    content: str,
+    chunk_index: int,
+    embedding: list[float],
+    timestamp_start: float | None = None,
+    timestamp_end: float | None = None,
+) -> int:
+    """Create a chunk with embedding and return its ID."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chunks (item_id, content, chunk_index, timestamp_start, timestamp_end, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (item_id, content, chunk_index, timestamp_start, timestamp_end, embedding),
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return result[0]
+
+
+def create_chunks_batch(chunks: list[dict]) -> list[int]:
+    """Create multiple chunks in a single transaction."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            ids = []
+            for chunk in chunks:
+                cur.execute(
+                    """
+                    INSERT INTO chunks (item_id, content, chunk_index, timestamp_start, timestamp_end, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        chunk["item_id"],
+                        chunk["content"],
+                        chunk["chunk_index"],
+                        chunk.get("timestamp_start"),
+                        chunk.get("timestamp_end"),
+                        chunk["embedding"],
+                    ),
+                )
+                ids.append(cur.fetchone()[0])
+            conn.commit()
+            return ids
+
+
+def search_chunks(query_embedding: list[float], limit: int = 10) -> list[dict]:
+    """Search for similar chunks using cosine similarity."""
+    embedding_array = np.array(query_embedding)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    c.id, c.content, c.chunk_index, c.timestamp_start, c.timestamp_end,
+                    i.title, i.url, i.type,
+                    1 - (c.embedding <=> %s) AS similarity
+                FROM chunks c
+                JOIN items i ON c.item_id = i.id
+                ORDER BY c.embedding <=> %s
+                LIMIT %s
+                """,
+                (embedding_array, embedding_array, limit),
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "chunk_id": row[0],
+                    "content": row[1],
+                    "chunk_index": row[2],
+                    "timestamp_start": row[3],
+                    "timestamp_end": row[4],
+                    "item_title": row[5],
+                    "item_url": row[6],
+                    "item_type": row[7],
+                    "similarity": row[8],
+                }
+                for row in rows
+            ]
+
+
+# --- Stats ---
+
+def get_stats() -> dict:
+    """Get statistics about the knowledge base."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM sources")
+            sources = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM items")
+            items = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM chunks")
+            chunks = cur.fetchone()[0]
+            return {
+                "sources": sources,
+                "items": items,
+                "chunks": chunks,
+            }
