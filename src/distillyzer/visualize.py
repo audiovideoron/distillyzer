@@ -14,8 +14,8 @@ load_dotenv()
 # Initialize Gemini client
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Model for image generation
-IMAGE_MODEL = "gemini-2.0-flash-exp-image-generation"
+# Model for image generation (Nano Banana Pro - best text rendering)
+IMAGE_MODEL = "gemini-3-pro-image-preview"
 
 
 def search_context(query: str, num_chunks: int = 3) -> str:
@@ -39,21 +39,16 @@ def create_diagram_prompt(concept: str, context: str) -> str:
     """Create a prompt for generating an informational diagram."""
     key_points = context[:400] if context else ""
 
-    return f"""Create a professional infographic diagram that visualizes this concept:
+    return f"""Create an infographic with title "{concept}".
 
-CONCEPT: {concept}
+Show exactly 4 boxes in a row labeled: CONTEXT, MODEL, PROMPT, TOOLS
 
-KEY INFORMATION:
+Connect them with arrows showing the flow.
+
+Add brief descriptions under each box based on this content:
 {key_points}
 
-STYLE REQUIREMENTS:
-- Clean, modern educational infographic
-- Use labeled boxes, arrows, and visual hierarchy
-- Blue and gray color palette with accent colors
-- Minimal text, maximum visual clarity
-- Suitable for learning materials
-
-Generate an image that helps someone understand this concept at a glance."""
+Style: blue boxes, white background, clean professional look."""
 
 
 def generate_image(
