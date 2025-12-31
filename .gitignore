@@ -26,3 +26,5 @@ logs/
 images/
 *.pdf
 artifacts/
+.claude/
+demos/
