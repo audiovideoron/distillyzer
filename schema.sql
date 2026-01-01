@@ -53,3 +53,39 @@ CREATE TABLE skills (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Projects (organize research, skills, and outputs)
+CREATE TABLE projects (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT,
+    status VARCHAR(50) DEFAULT 'active',  -- 'active', 'completed', 'archived'
+    metadata JSONB,  -- flexible storage for project-specific data
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Link items to projects
+CREATE TABLE project_items (
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+    PRIMARY KEY (project_id, item_id)
+);
+
+-- Link skills to projects
+CREATE TABLE project_skills (
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    skill_id INTEGER REFERENCES skills(id) ON DELETE CASCADE,
+    PRIMARY KEY (project_id, skill_id)
+);
+
+-- Project outputs (generated deliverables)
+CREATE TABLE project_outputs (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50),  -- 'pdf', 'markdown', 'image', etc.
+    path TEXT,  -- file path to output
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT NOW()
+);
