@@ -17,6 +17,8 @@ skills_app = typer.Typer(help="Manage presentation skills.")
 app.add_typer(skills_app, name="skills")
 projects_app = typer.Typer(help="Manage projects with faceted organization.")
 app.add_typer(projects_app, name="project")
+sources_app = typer.Typer(help="Manage knowledge sources (channels, repos).")
+app.add_typer(sources_app, name="sources")
 console = Console()
 
 
@@ -1444,6 +1446,89 @@ def crosspolinate(
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise
+
+
+# --- Sources subcommands ---
+
+@sources_app.command("list")
+def sources_list():
+    """List all sources (channels, repos)."""
+    try:
+        sources = db.list_sources()
+
+        if not sources:
+            console.print("[dim]No sources found.[/dim]")
+            console.print("[dim]Harvest content to create sources:[/dim] dz harvest <url>")
+            return
+
+        table = Table(show_header=True)
+        table.add_column("ID", style="dim", width=4)
+        table.add_column("Type", style="yellow", width=10)
+        table.add_column("Name", style="cyan")
+        table.add_column("URL", style="dim")
+
+        for source in sources:
+            url = source.get("url") or ""
+            if len(url) > 50:
+                url = url[:47] + "..."
+            table.add_row(
+                str(source["id"]),
+                source["type"],
+                source["name"],
+                url,
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(sources)} sources[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@sources_app.command("delete")
+def sources_delete(
+    source_id: int = typer.Argument(..., help="Source ID to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+):
+    """Delete a source by ID.
+
+    Note: This only deletes the source record. Associated items and chunks
+    remain in the database (they will show as having no source).
+
+    Example:
+        dz sources delete 3
+        dz sources delete 3 --force
+    """
+    try:
+        # First check if source exists
+        sources = db.list_sources()
+        source = next((s for s in sources if s["id"] == source_id), None)
+
+        if not source:
+            console.print(f"[red]Source not found:[/red] ID {source_id}")
+            console.print("[dim]Use 'dz sources list' to see available sources[/dim]")
+            return
+
+        # Show source details
+        console.print(f"[yellow]Source to delete:[/yellow]")
+        console.print(f"  ID: {source['id']}")
+        console.print(f"  Type: {source['type']}")
+        console.print(f"  Name: {source['name']}")
+        if source.get("url"):
+            console.print(f"  URL: {source['url']}")
+
+        if not force:
+            if not typer.confirm("\nDelete this source?"):
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+
+        if db.delete_source(source_id):
+            console.print(f"[green]Deleted:[/green] {source['name']}")
+        else:
+            console.print(f"[red]Failed to delete source[/red]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
 
 
 if __name__ == "__main__":
