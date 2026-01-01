@@ -3,7 +3,7 @@
 import os
 
 import tiktoken
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from dotenv import load_dotenv
 
 from . import db
@@ -139,11 +139,14 @@ def chunk_code(text: str, max_tokens: int = 500) -> list[str]:
 
 def get_embedding(text: str) -> list[float]:
     """Get embedding for a single text using OpenAI API."""
-    response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=text,
-    )
-    return response.data[0].embedding
+    try:
+        response = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=text,
+        )
+        return response.data[0].embedding
+    except OpenAIError as e:
+        raise RuntimeError(f"OpenAI embedding API error: {e}") from e
 
 
 def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
@@ -151,11 +154,14 @@ def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
 
-    response = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=texts,
-    )
-    return [item.embedding for item in response.data]
+    try:
+        response = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=texts,
+        )
+        return [item.embedding for item in response.data]
+    except OpenAIError as e:
+        raise RuntimeError(f"OpenAI batch embedding API error: {e}") from e
 
 
 def embed_transcript_chunks(
