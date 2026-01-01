@@ -1723,11 +1723,12 @@ def _display_project_facets(project: dict) -> None:
 
     facet_parts = []
     if needs:
-        facet_parts.append(f"NEEDS=[{', '.join(needs)}]")
+        # Escape brackets for Rich markup (use \[ for literal [)
+        facet_parts.append(f"NEEDS=\\[{', '.join(needs)}]")
     if uses:
-        facet_parts.append(f"USES=[{', '.join(uses)}]")
+        facet_parts.append(f"USES=\\[{', '.join(uses)}]")
     if about:
-        facet_parts.append(f"ABOUT=[{', '.join(about)}]")
+        facet_parts.append(f"ABOUT=\\[{', '.join(about)}]")
 
     if facet_parts:
         console.print(f"[dim]Based on: {', '.join(facet_parts)}[/dim]\n")
