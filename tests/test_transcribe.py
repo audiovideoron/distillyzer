@@ -33,7 +33,9 @@ class TestTranscribeAudio:
         mock_response.language = "en"
         mock_response.duration = 10.0
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.return_value = mock_response
 
             result = transcribe.transcribe_audio(audio_file)
@@ -54,7 +56,9 @@ class TestTranscribeAudio:
         mock_response.language = "fr"
         mock_response.duration = 5.0
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.return_value = mock_response
 
             result = transcribe.transcribe_audio(audio_file, language="fr")
@@ -70,7 +74,9 @@ class TestTranscribeAudio:
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"\x00" * 100)
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.side_effect = AuthenticationError(
                 message="Invalid API key",
                 response=MagicMock(status_code=401),
@@ -83,40 +89,40 @@ class TestTranscribeAudio:
             assert "authentication failed" in str(exc_info.value).lower()
 
     def test_transcribe_audio_rate_limit(self, tmp_path):
-        """Test transcription with rate limit error."""
+        """Test transcription with rate limit error (retryable, will be raised after retries)."""
         from openai import RateLimitError
 
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"\x00" * 100)
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.side_effect = RateLimitError(
                 message="Rate limit exceeded",
                 response=MagicMock(status_code=429),
                 body=None,
             )
 
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(RateLimitError):
                 transcribe.transcribe_audio(audio_file)
 
-            assert "rate limit" in str(exc_info.value).lower()
-
     def test_transcribe_audio_api_connection_error(self, tmp_path):
-        """Test transcription with API connection error."""
+        """Test transcription with API connection error (retryable, will be raised after retries)."""
         from openai import APIConnectionError
 
         audio_file = tmp_path / "test.mp3"
         audio_file.write_bytes(b"\x00" * 100)
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.side_effect = APIConnectionError(
                 request=MagicMock()
             )
 
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(APIConnectionError):
                 transcribe.transcribe_audio(audio_file)
-
-            assert "connect" in str(exc_info.value).lower()
 
     def test_transcribe_audio_no_segments(self, tmp_path):
         """Test transcription when no segments are returned."""
@@ -129,7 +135,9 @@ class TestTranscribeAudio:
         mock_response.language = "en"
         mock_response.duration = 10.0
 
-        with patch("distillyzer.transcribe.client") as mock_client:
+        with patch("distillyzer.transcribe.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.audio.transcriptions.create.return_value = mock_response
 
             result = transcribe.transcribe_audio(audio_file)

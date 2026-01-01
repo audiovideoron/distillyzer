@@ -37,7 +37,32 @@ anthropic_retry = retry(
     reraise=True,
 )
 
-claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# Lazy-initialized Anthropic client
+_anthropic_client = None
+
+
+class MissingAPIKeyError(Exception):
+    """Raised when a required API key is not configured."""
+    pass
+
+
+def get_anthropic_client() -> anthropic.Anthropic:
+    """Get the Anthropic client, initializing it lazily with validation.
+
+    Raises:
+        MissingAPIKeyError: If ANTHROPIC_API_KEY environment variable is not set.
+    """
+    global _anthropic_client
+    if _anthropic_client is None:
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise MissingAPIKeyError(
+                "ANTHROPIC_API_KEY environment variable is not set. "
+                "Please set it in your .env file or environment to use extraction features. "
+                "You can get an API key from https://console.anthropic.com/settings/keys"
+            )
+        _anthropic_client = anthropic.Anthropic(api_key=api_key)
+    return _anthropic_client
 
 
 @anthropic_retry
@@ -47,7 +72,8 @@ def _call_claude(system_prompt: str, user_message: str, max_tokens: int = 4000):
     Includes automatic retry with exponential backoff for transient errors
     (connection errors, rate limits, timeouts, server errors).
     """
-    return claude.messages.create(
+    client = get_anthropic_client()
+    return client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=max_tokens,
         system=system_prompt,

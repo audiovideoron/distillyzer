@@ -28,7 +28,32 @@ openai_retry = retry(
     reraise=True,
 )
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy-initialized OpenAI client
+_openai_client = None
+
+
+class MissingAPIKeyError(Exception):
+    """Raised when a required API key is not configured."""
+    pass
+
+
+def get_openai_client() -> OpenAI:
+    """Get the OpenAI client, initializing it lazily with validation.
+
+    Raises:
+        MissingAPIKeyError: If OPENAI_API_KEY environment variable is not set.
+    """
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise MissingAPIKeyError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Please set it in your .env file or environment to use transcription features. "
+                "You can get an API key from https://platform.openai.com/api-keys"
+            )
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 
 @openai_retry
@@ -47,6 +72,7 @@ def transcribe_audio(audio_path: str | Path, language: str | None = None) -> dic
     with open(audio_path, "rb") as audio_file:
         # Use verbose_json to get word-level timestamps
         try:
+            client = get_openai_client()
             response = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,

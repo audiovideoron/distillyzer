@@ -169,10 +169,36 @@ openai_retry = retry(
 
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy-initialized OpenAI client
+_openai_client = None
+
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
 MAX_TOKENS = 8000  # Leave buffer for safety
+
+
+class MissingAPIKeyError(Exception):
+    """Raised when a required API key is not configured."""
+    pass
+
+
+def get_openai_client() -> OpenAI:
+    """Get the OpenAI client, initializing it lazily with validation.
+
+    Raises:
+        MissingAPIKeyError: If OPENAI_API_KEY environment variable is not set.
+    """
+    global _openai_client
+    if _openai_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise MissingAPIKeyError(
+                "OPENAI_API_KEY environment variable is not set. "
+                "Please set it in your .env file or environment to use embedding features. "
+                "You can get an API key from https://platform.openai.com/api-keys"
+            )
+        _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 
 def count_tokens(text: str, model: str = "cl100k_base") -> int:
@@ -311,6 +337,7 @@ def get_embedding(text: str) -> list[float]:
     rate_limiter.acquire(num_tokens=token_count)
 
     try:
+        client = get_openai_client()
         response = client.embeddings.create(
             model=EMBEDDING_MODEL,
             input=text,
@@ -341,6 +368,7 @@ def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
     rate_limiter.acquire(num_tokens=total_tokens)
 
     try:
+        client = get_openai_client()
         response = client.embeddings.create(
             model=EMBEDDING_MODEL,
             input=texts,

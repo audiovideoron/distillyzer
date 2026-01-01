@@ -137,10 +137,12 @@ class TestAsk:
         mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             result = query.ask("What is machine learning?")
 
@@ -156,10 +158,12 @@ class TestAsk:
         mock_response.usage = MagicMock(input_tokens=50, output_tokens=20)
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = []
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             result = query.ask("Unknown topic?")
 
@@ -171,46 +175,48 @@ class TestAsk:
         import anthropic
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.side_effect = anthropic.APIConnectionError(
+            mock_client.messages.create.side_effect = anthropic.APIConnectionError(
                 request=MagicMock()
             )
 
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(anthropic.APIConnectionError):
                 query.ask("What is AI?")
-
-            assert "connect" in str(exc_info.value).lower()
 
     def test_ask_rate_limit_error(self, sample_chunks):
         """Test asking when rate limited."""
         import anthropic
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.side_effect = anthropic.RateLimitError(
+            mock_client.messages.create.side_effect = anthropic.RateLimitError(
                 message="Rate limit exceeded",
                 response=MagicMock(status_code=429),
                 body=None,
             )
 
-            with pytest.raises(RuntimeError) as exc_info:
+            with pytest.raises(anthropic.RateLimitError):
                 query.ask("What is AI?")
-
-            assert "rate limit" in str(exc_info.value).lower()
 
     def test_ask_api_status_error(self, sample_chunks):
         """Test asking when API returns error status."""
         import anthropic
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.side_effect = anthropic.APIStatusError(
+            mock_client.messages.create.side_effect = anthropic.APIStatusError(
                 message="Server error",
                 response=MagicMock(status_code=500),
                 body=None,
@@ -232,15 +238,17 @@ class TestChatTurn:
         mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             result = query.chat_turn("Hello", history=[])
 
             assert "answer" in result
-            call_args = mock_claude.messages.create.call_args
+            call_args = mock_client.messages.create.call_args
             assert len(call_args[1]["messages"]) == 1  # Just the current message
 
     def test_chat_turn_with_history(self, sample_chunks):
@@ -255,15 +263,17 @@ class TestChatTurn:
         ]
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             result = query.chat_turn("Tell me more", history=history)
 
             assert "answer" in result
-            call_args = mock_claude.messages.create.call_args
+            call_args = mock_client.messages.create.call_args
             # Should have history + current message
             assert len(call_args[1]["messages"]) == 3
 
@@ -281,14 +291,16 @@ class TestChatTurn:
         ]
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             query.chat_turn("Question 3", history=history)
 
-            call_args = mock_claude.messages.create.call_args
+            call_args = mock_client.messages.create.call_args
             messages = call_args[1]["messages"]
 
             # Verify role alternation
@@ -301,14 +313,16 @@ class TestChatTurn:
         import anthropic
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.side_effect = anthropic.APIConnectionError(
+            mock_client.messages.create.side_effect = anthropic.APIConnectionError(
                 request=MagicMock()
             )
 
-            with pytest.raises(RuntimeError):
+            with pytest.raises(anthropic.APIConnectionError):
                 query.chat_turn("Hello", history=[])
 
     def test_chat_turn_includes_sources(self, sample_chunks):
@@ -318,10 +332,12 @@ class TestChatTurn:
         mock_response.usage = MagicMock(input_tokens=100, output_tokens=50)
 
         with patch("distillyzer.query.search") as mock_search, \
-             patch("distillyzer.query.claude") as mock_claude:
+             patch("distillyzer.query.get_anthropic_client") as mock_get_client:
 
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_search.return_value = sample_chunks
-            mock_claude.messages.create.return_value = mock_response
+            mock_client.messages.create.return_value = mock_response
 
             result = query.chat_turn("Question", history=[])
 

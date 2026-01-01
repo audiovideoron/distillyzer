@@ -245,7 +245,9 @@ class TestGetEmbedding:
         """Test successful embedding generation."""
         mock_embedding = [0.1] * 1536
 
-        with patch("distillyzer.embed.client") as mock_client:
+        with patch("distillyzer.embed.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_response = MagicMock()
             mock_response.data = [MagicMock(embedding=mock_embedding)]
             mock_client.embeddings.create.return_value = mock_response
@@ -259,7 +261,9 @@ class TestGetEmbedding:
         """Test embedding generation with API error."""
         from openai import OpenAIError
 
-        with patch("distillyzer.embed.client") as mock_client:
+        with patch("distillyzer.embed.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.embeddings.create.side_effect = OpenAIError("API Error")
 
             with pytest.raises(RuntimeError) as exc_info:
@@ -281,7 +285,9 @@ class TestGetEmbeddingsBatch:
         texts = ["Text 1", "Text 2", "Text 3"]
         mock_embeddings = [[0.1] * 1536, [0.2] * 1536, [0.3] * 1536]
 
-        with patch("distillyzer.embed.client") as mock_client:
+        with patch("distillyzer.embed.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_response = MagicMock()
             mock_response.data = [MagicMock(embedding=e) for e in mock_embeddings]
             mock_client.embeddings.create.return_value = mock_response
@@ -295,7 +301,9 @@ class TestGetEmbeddingsBatch:
         """Test batch embedding with API error."""
         from openai import OpenAIError
 
-        with patch("distillyzer.embed.client") as mock_client:
+        with patch("distillyzer.embed.get_openai_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_get_client.return_value = mock_client
             mock_client.embeddings.create.side_effect = OpenAIError("Batch API Error")
 
             with pytest.raises(RuntimeError) as exc_info:

@@ -80,6 +80,7 @@ from .embed import (
     embed_repo_files,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
+    MissingAPIKeyError,
 )
 
 # Query operations
@@ -222,6 +223,7 @@ __all__ = [
     "embed_repo_files",
     "EMBEDDING_MODEL",
     "EMBEDDING_DIM",
+    "MissingAPIKeyError",
     # Query
     "search",
     "ask",

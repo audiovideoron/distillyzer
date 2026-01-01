@@ -97,10 +97,10 @@ class TestExtractArtifacts:
         mock_response.usage = MagicMock(input_tokens=500, output_tokens=200)
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context content", sample_chunks)
-            mock_claude.messages.create.return_value = mock_response
+            mock_call_claude.return_value = mock_response
 
             result = extract.extract_artifacts("prompting patterns")
 
@@ -118,16 +118,16 @@ class TestExtractArtifacts:
         mock_response.usage = MagicMock(input_tokens=300, output_tokens=50)
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context", sample_chunks)
-            mock_claude.messages.create.return_value = mock_response
+            mock_call_claude.return_value = mock_response
 
             result = extract.extract_artifacts("topic", artifact_type="prompt")
 
             # Verify that the system prompt included only prompt instructions
-            call_args = mock_claude.messages.create.call_args
-            system_prompt = call_args[1]["system"]
+            call_args = mock_call_claude.call_args
+            system_prompt = call_args[0][0]  # First positional arg
             assert "PROMPT TEMPLATES" in system_prompt
 
     def test_extract_artifacts_json_in_code_block(self, sample_chunks):
@@ -141,10 +141,10 @@ class TestExtractArtifacts:
         mock_response.usage = MagicMock(input_tokens=300, output_tokens=100)
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context", sample_chunks)
-            mock_claude.messages.create.return_value = mock_response
+            mock_call_claude.return_value = mock_response
 
             result = extract.extract_artifacts("topic")
 
@@ -158,10 +158,10 @@ class TestExtractArtifacts:
         mock_response.usage = MagicMock(input_tokens=300, output_tokens=50)
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context", sample_chunks)
-            mock_claude.messages.create.return_value = mock_response
+            mock_call_claude.return_value = mock_response
 
             result = extract.extract_artifacts("topic")
 
@@ -174,10 +174,10 @@ class TestExtractArtifacts:
         import anthropic
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context", sample_chunks)
-            mock_claude.messages.create.side_effect = anthropic.APIConnectionError(
+            mock_call_claude.side_effect = anthropic.APIConnectionError(
                 request=MagicMock()
             )
 
@@ -191,10 +191,10 @@ class TestExtractArtifacts:
         import anthropic
 
         with patch("distillyzer.extract.search_context") as mock_search, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_search.return_value = ("Context", sample_chunks)
-            mock_claude.messages.create.side_effect = anthropic.RateLimitError(
+            mock_call_claude.side_effect = anthropic.RateLimitError(
                 message="Rate limit",
                 response=MagicMock(status_code=429),
                 body=None,
@@ -202,7 +202,7 @@ class TestExtractArtifacts:
 
             result = extract.extract_artifacts("topic")
 
-            assert result["status"] == "rate_limit"
+            assert result["status"] == "api_error"  # Changed: rate limit is now an API error after retries
 
 
 class TestExtractFromItem:
@@ -251,10 +251,10 @@ class TestExtractFromItem:
         mock_response.usage = MagicMock(input_tokens=400, output_tokens=150)
 
         with patch("distillyzer.extract.db") as mock_db, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_db.get_items_with_chunks.return_value = [mock_item]
-            mock_claude.messages.create.return_value = mock_response
+            mock_call_claude.return_value = mock_response
 
             result = extract.extract_from_item(1)
 
@@ -273,10 +273,10 @@ class TestExtractFromItem:
         }
 
         with patch("distillyzer.extract.db") as mock_db, \
-             patch("distillyzer.extract.claude") as mock_claude:
+             patch("distillyzer.extract._call_claude") as mock_call_claude:
 
             mock_db.get_items_with_chunks.return_value = [mock_item]
-            mock_claude.messages.create.side_effect = anthropic.APIConnectionError(
+            mock_call_claude.side_effect = anthropic.APIConnectionError(
                 request=MagicMock()
             )
 

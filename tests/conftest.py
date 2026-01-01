@@ -67,14 +67,20 @@ def mock_transcription_response():
 
 @pytest.fixture
 def mock_anthropic_client():
-    """Mock Anthropic client for Claude API."""
-    with patch("distillyzer.query.claude") as mock_query_claude, \
-         patch("distillyzer.extract.claude") as mock_extract_claude, \
-         patch("distillyzer.artifacts.claude") as mock_artifacts_claude:
+    """Mock Anthropic client for Claude API (via get_anthropic_client)."""
+    with patch("distillyzer.query.get_anthropic_client") as mock_query_get_client, \
+         patch("distillyzer.extract.get_anthropic_client") as mock_extract_get_client, \
+         patch("distillyzer.artifacts.get_anthropic_client") as mock_artifacts_get_client:
+        mock_query_client = MagicMock()
+        mock_extract_client = MagicMock()
+        mock_artifacts_client = MagicMock()
+        mock_query_get_client.return_value = mock_query_client
+        mock_extract_get_client.return_value = mock_extract_client
+        mock_artifacts_get_client.return_value = mock_artifacts_client
         yield {
-            "query": mock_query_claude,
-            "extract": mock_extract_claude,
-            "artifacts": mock_artifacts_claude,
+            "query": mock_query_client,
+            "extract": mock_extract_client,
+            "artifacts": mock_artifacts_client,
         }
 
 
