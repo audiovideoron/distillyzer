@@ -4,6 +4,7 @@ import atexit
 import os
 from contextlib import contextmanager
 from typing import Generator
+from urllib.parse import urlparse
 
 import numpy as np
 import psycopg
@@ -14,7 +15,71 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/distillyzer")
+
+class DatabaseConfigError(Exception):
+    """Raised when DATABASE_URL is missing or malformed."""
+
+    pass
+
+
+def _validate_database_url(url: str | None) -> str:
+    """Validate DATABASE_URL and return it if valid.
+
+    Raises DatabaseConfigError with a clear message if:
+    - DATABASE_URL is not set
+    - DATABASE_URL is empty
+    - DATABASE_URL has an invalid scheme (must be postgresql:// or postgres://)
+    - DATABASE_URL is missing required components (host or database name)
+    """
+    if url is None or url.strip() == "":
+        raise DatabaseConfigError(
+            "DATABASE_URL environment variable is not set.\n"
+            "Please set it to a valid PostgreSQL connection string, e.g.:\n"
+            "  export DATABASE_URL='postgresql://user:password@localhost:5432/distillyzer'\n"
+            "Or add it to your .env file."
+        )
+
+    url = url.strip()
+
+    # Check scheme
+    if not url.startswith(("postgresql://", "postgres://")):
+        raise DatabaseConfigError(
+            f"DATABASE_URL has invalid scheme.\n"
+            f"Expected 'postgresql://' or 'postgres://', got: {url.split('://')[0] if '://' in url else 'no scheme'}\n"
+            f"Example: postgresql://user:password@localhost:5432/distillyzer"
+        )
+
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        raise DatabaseConfigError(
+            f"DATABASE_URL could not be parsed: {e}\n"
+            f"Please provide a valid PostgreSQL connection string.\n"
+            f"Example: postgresql://user:password@localhost:5432/distillyzer"
+        )
+
+    # Check for host
+    if not parsed.hostname:
+        raise DatabaseConfigError(
+            f"DATABASE_URL is missing the host.\n"
+            f"Got: {url}\n"
+            f"Example: postgresql://user:password@localhost:5432/distillyzer"
+        )
+
+    # Check for database name (path should be /dbname)
+    db_name = parsed.path.lstrip("/") if parsed.path else ""
+    if not db_name:
+        raise DatabaseConfigError(
+            f"DATABASE_URL is missing the database name.\n"
+            f"Got: {url}\n"
+            f"Example: postgresql://user:password@localhost:5432/distillyzer"
+        )
+
+    return url
+
+
+# Validate DATABASE_URL at module load time for early failure
+DATABASE_URL = _validate_database_url(os.getenv("DATABASE_URL"))
 
 # Connection pool configuration
 # min_size: minimum connections to keep open
