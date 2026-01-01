@@ -31,6 +31,9 @@ openai_retry = retry(
 # Lazy-initialized OpenAI client
 _openai_client = None
 
+# Default chunk duration for timed chunks (configurable via environment variable)
+DEFAULT_CHUNK_DURATION = float(os.getenv("TRANSCRIBE_CHUNK_DURATION", "60.0"))
+
 
 class MissingAPIKeyError(Exception):
     """Raised when a required API key is not configured."""
@@ -108,12 +111,21 @@ def transcribe_audio(audio_path: str | Path, language: str | None = None) -> dic
 
 def segments_to_timed_chunks(
     segments: list[dict],
-    chunk_duration: float = 60.0,
+    chunk_duration: float | None = None,
 ) -> list[dict]:
     """
     Combine segments into larger chunks of approximately chunk_duration seconds.
     Preserves timestamp information.
+
+    Args:
+        segments: List of segment dictionaries with 'start', 'end', and 'text' keys.
+        chunk_duration: Duration in seconds for each chunk. If None, uses
+            DEFAULT_CHUNK_DURATION (configurable via TRANSCRIBE_CHUNK_DURATION env var,
+            defaults to 60.0 seconds).
     """
+    if chunk_duration is None:
+        chunk_duration = DEFAULT_CHUNK_DURATION
+
     if not segments:
         return []
 
