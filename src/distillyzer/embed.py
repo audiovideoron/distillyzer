@@ -187,6 +187,9 @@ EMBEDDING_DIM = int(os.getenv(
 ))
 MAX_TOKENS = 8000  # Leave buffer for safety
 
+# Configurable max tokens for chunking (default: 500)
+EMBED_MAX_TOKENS = int(os.getenv("EMBED_MAX_TOKENS", "500"))
+
 
 def get_embedding_model_info() -> dict:
     """Get current embedding model configuration.
@@ -233,13 +236,23 @@ def count_tokens(text: str, model: str = "cl100k_base") -> int:
 
 def chunk_text(
     text: str,
-    max_tokens: int = 500,
+    max_tokens: int = None,
     overlap_tokens: int = 50,
 ) -> list[str]:
     """
     Split text into chunks of approximately max_tokens.
     Uses sentence boundaries when possible.
+
+    Args:
+        text: The text to chunk.
+        max_tokens: Maximum tokens per chunk. Defaults to EMBED_MAX_TOKENS (env var or 500).
+        overlap_tokens: Number of tokens to overlap between chunks.
+
+    Returns:
+        List of text chunks.
     """
+    if max_tokens is None:
+        max_tokens = EMBED_MAX_TOKENS
     if not text.strip():
         return []
 
@@ -291,10 +304,19 @@ def chunk_text(
     return chunks
 
 
-def chunk_code(text: str, max_tokens: int = 500) -> list[str]:
+def chunk_code(text: str, max_tokens: int = None) -> list[str]:
     """
     Split code into chunks, trying to preserve function/class boundaries.
+
+    Args:
+        text: The code text to chunk.
+        max_tokens: Maximum tokens per chunk. Defaults to EMBED_MAX_TOKENS (env var or 500).
+
+    Returns:
+        List of code chunks.
     """
+    if max_tokens is None:
+        max_tokens = EMBED_MAX_TOKENS
     if not text.strip():
         return []
 
