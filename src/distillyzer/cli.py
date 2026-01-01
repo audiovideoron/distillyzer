@@ -15,6 +15,8 @@ artifacts_app = typer.Typer(help="Manage and use extracted artifacts.")
 app.add_typer(artifacts_app, name="artifacts")
 skills_app = typer.Typer(help="Manage presentation skills.")
 app.add_typer(skills_app, name="skills")
+projects_app = typer.Typer(help="Manage projects with faceted organization.")
+app.add_typer(projects_app, name="project")
 console = Console()
 
 
@@ -886,6 +888,310 @@ def skills_delete(name: str):
 
         if typer.confirm(f"Delete skill '{name}'?"):
             if db.delete_skill(name):
+                console.print(f"[green]Deleted:[/green] {name}")
+            else:
+                console.print(f"[red]Failed to delete:[/red] {name}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+# --- Projects subcommands ---
+
+def _parse_facet(value: str | None) -> list[str]:
+    """Parse comma-separated facet values into a list."""
+    if not value:
+        return []
+    return [v.strip() for v in value.split(",") if v.strip()]
+
+
+@projects_app.command("create")
+def projects_create(
+    name: str = typer.Argument(..., help="Project name (unique identifier)"),
+    about: str = typer.Option(None, "--about", "-a", help="Comma-separated 'about' facets (what it's about)"),
+    uses: str = typer.Option(None, "--uses", "-u", help="Comma-separated 'uses' facets (technologies used)"),
+    needs: str = typer.Option(None, "--needs", "-n", help="Comma-separated 'needs' facets (requirements)"),
+    description: str = typer.Option(None, "--description", "-d", help="Project description"),
+    status: str = typer.Option("active", "--status", "-s", help="Project status (active, completed, archived)"),
+):
+    """Create a new project with faceted organization.
+
+    Example:
+        dz project create power-quality --about "power quality,flicker" --uses "python,signal processing" --needs "data collection"
+    """
+    try:
+        # Check if project already exists
+        existing = db.get_project(name)
+        if existing:
+            console.print(f"[red]Project already exists:[/red] {name}")
+            return
+
+        project_id = db.create_project(
+            name=name,
+            description=description,
+            status=status,
+            facet_about=_parse_facet(about),
+            facet_uses=_parse_facet(uses),
+            facet_needs=_parse_facet(needs),
+        )
+
+        console.print(f"[green]Created project:[/green] {name} (id: {project_id})")
+
+        # Show facets if any were provided
+        if about:
+            console.print(f"  [dim]About:[/dim] {about}")
+        if uses:
+            console.print(f"  [dim]Uses:[/dim] {uses}")
+        if needs:
+            console.print(f"  [dim]Needs:[/dim] {needs}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("list")
+def projects_list(
+    status: str = typer.Option(None, "--status", "-s", help="Filter by status (active, completed, archived)"),
+):
+    """List all projects."""
+    try:
+        projects = db.list_projects(status=status)
+
+        if not projects:
+            if status:
+                console.print(f"[dim]No {status} projects found.[/dim]")
+            else:
+                console.print("[dim]No projects found.[/dim]")
+            console.print("[dim]Create one with:[/dim] dz project create <name>")
+            return
+
+        table = Table(show_header=True)
+        table.add_column("Name", style="cyan")
+        table.add_column("Status", style="yellow")
+        table.add_column("About", style="dim")
+        table.add_column("Uses", style="dim")
+        table.add_column("Needs", style="dim")
+
+        for proj in projects:
+            about_str = ", ".join(proj.get("facet_about", [])[:3])
+            if len(proj.get("facet_about", [])) > 3:
+                about_str += "..."
+            uses_str = ", ".join(proj.get("facet_uses", [])[:3])
+            if len(proj.get("facet_uses", [])) > 3:
+                uses_str += "..."
+            needs_str = ", ".join(proj.get("facet_needs", [])[:3])
+            if len(proj.get("facet_needs", [])) > 3:
+                needs_str += "..."
+
+            table.add_row(
+                proj["name"],
+                proj["status"],
+                about_str,
+                uses_str,
+                needs_str,
+            )
+
+        console.print(table)
+        console.print(f"\n[dim]Total: {len(projects)} projects[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("show")
+def projects_show(name: str):
+    """Show project details including linked items and skills."""
+    try:
+        project = db.get_project(name)
+
+        if not project:
+            console.print(f"[red]Project not found:[/red] {name}")
+            return
+
+        # Build project info panel
+        info_lines = []
+        if project.get("description"):
+            info_lines.append(f"[bold]Description:[/bold] {project['description']}")
+        info_lines.append(f"[bold]Status:[/bold] {project['status']}")
+
+        if project.get("facet_about"):
+            info_lines.append(f"\n[bold]About:[/bold] {', '.join(project['facet_about'])}")
+        if project.get("facet_uses"):
+            info_lines.append(f"[bold]Uses:[/bold] {', '.join(project['facet_uses'])}")
+        if project.get("facet_needs"):
+            info_lines.append(f"[bold]Needs:[/bold] {', '.join(project['facet_needs'])}")
+
+        if project.get("beads_epic_id"):
+            info_lines.append(f"\n[bold]Beads Epic:[/bold] {project['beads_epic_id']}")
+
+        created = project.get("created_at")
+        updated = project.get("updated_at")
+        if created:
+            info_lines.append(f"\n[dim]Created: {created.strftime('%Y-%m-%d %H:%M')}[/dim]")
+        if updated:
+            info_lines.append(f"[dim]Updated: {updated.strftime('%Y-%m-%d %H:%M')}[/dim]")
+
+        console.print(Panel(
+            "\n".join(info_lines),
+            title=f"[bold]{project['name']}[/bold]",
+            border_style="cyan",
+        ))
+
+        # Show linked items
+        items = db.get_project_items(project["id"])
+        if items:
+            console.print(f"\n[bold]Linked Items ({len(items)}):[/bold]")
+            for item in items:
+                console.print(f"  [{item['id']}] {item['title']} ({item['type']})")
+
+        # Show linked skills
+        skills = db.get_project_skills(project["id"])
+        if skills:
+            console.print(f"\n[bold]Linked Skills ({len(skills)}):[/bold]")
+            for skill in skills:
+                console.print(f"  {skill['name']} ({skill['type']})")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("link")
+def projects_link(
+    name: str = typer.Argument(..., help="Project name"),
+    item: int = typer.Option(None, "--item", "-i", help="Item ID to link"),
+    skill: str = typer.Option(None, "--skill", "-s", help="Skill name to link"),
+):
+    """Link an item or skill to a project.
+
+    Example:
+        dz project link my-project --item 5
+        dz project link my-project --skill "diagnostic-troubleshooting"
+    """
+    try:
+        project = db.get_project(name)
+        if not project:
+            console.print(f"[red]Project not found:[/red] {name}")
+            return
+
+        if not item and not skill:
+            console.print("[red]Provide --item or --skill to link[/red]")
+            return
+
+        if item:
+            if db.link_project_item(project["id"], item):
+                console.print(f"[green]Linked item {item} to project {name}[/green]")
+            else:
+                console.print(f"[red]Failed to link item {item}[/red]")
+
+        if skill:
+            skill_obj = db.get_skill(skill)
+            if not skill_obj:
+                console.print(f"[red]Skill not found:[/red] {skill}")
+                return
+            if db.link_project_skill(project["id"], skill_obj["id"]):
+                console.print(f"[green]Linked skill '{skill}' to project {name}[/green]")
+            else:
+                console.print(f"[red]Failed to link skill '{skill}'[/red]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("unlink")
+def projects_unlink(
+    name: str = typer.Argument(..., help="Project name"),
+    item: int = typer.Option(None, "--item", "-i", help="Item ID to unlink"),
+    skill: str = typer.Option(None, "--skill", "-s", help="Skill name to unlink"),
+):
+    """Unlink an item or skill from a project.
+
+    Example:
+        dz project unlink my-project --item 5
+        dz project unlink my-project --skill "diagnostic-troubleshooting"
+    """
+    try:
+        project = db.get_project(name)
+        if not project:
+            console.print(f"[red]Project not found:[/red] {name}")
+            return
+
+        if not item and not skill:
+            console.print("[red]Provide --item or --skill to unlink[/red]")
+            return
+
+        if item:
+            if db.unlink_project_item(project["id"], item):
+                console.print(f"[green]Unlinked item {item} from project {name}[/green]")
+            else:
+                console.print(f"[yellow]Item {item} was not linked to project {name}[/yellow]")
+
+        if skill:
+            skill_obj = db.get_skill(skill)
+            if not skill_obj:
+                console.print(f"[red]Skill not found:[/red] {skill}")
+                return
+            if db.unlink_project_skill(project["id"], skill_obj["id"]):
+                console.print(f"[green]Unlinked skill '{skill}' from project {name}[/green]")
+            else:
+                console.print(f"[yellow]Skill '{skill}' was not linked to project {name}[/yellow]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("update")
+def projects_update(
+    name: str = typer.Argument(..., help="Project name"),
+    about: str = typer.Option(None, "--about", "-a", help="Replace 'about' facets (comma-separated)"),
+    uses: str = typer.Option(None, "--uses", "-u", help="Replace 'uses' facets (comma-separated)"),
+    needs: str = typer.Option(None, "--needs", "-n", help="Replace 'needs' facets (comma-separated)"),
+    description: str = typer.Option(None, "--description", "-d", help="Update description"),
+    status: str = typer.Option(None, "--status", "-s", help="Update status (active, completed, archived)"),
+):
+    """Update a project's facets, description, or status.
+
+    Example:
+        dz project update my-project --status completed
+        dz project update my-project --about "new topic,another topic"
+    """
+    try:
+        project = db.get_project(name)
+        if not project:
+            console.print(f"[red]Project not found:[/red] {name}")
+            return
+
+        # Parse facets only if provided
+        facet_about = _parse_facet(about) if about is not None else None
+        facet_uses = _parse_facet(uses) if uses is not None else None
+        facet_needs = _parse_facet(needs) if needs is not None else None
+
+        if db.update_project(
+            name=name,
+            description=description,
+            status=status,
+            facet_about=facet_about,
+            facet_uses=facet_uses,
+            facet_needs=facet_needs,
+        ):
+            console.print(f"[green]Updated:[/green] {name}")
+        else:
+            console.print(f"[red]Failed to update:[/red] {name}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@projects_app.command("delete")
+def projects_delete(name: str):
+    """Delete a project."""
+    try:
+        project = db.get_project(name)
+        if not project:
+            console.print(f"[red]Project not found:[/red] {name}")
+            return
+
+        if typer.confirm(f"Delete project '{name}'?"):
+            if db.delete_project(name):
                 console.print(f"[green]Deleted:[/green] {name}")
             else:
                 console.print(f"[red]Failed to delete:[/red] {name}")

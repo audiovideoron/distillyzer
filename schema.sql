@@ -60,7 +60,21 @@ CREATE TABLE projects (
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     status VARCHAR(50) DEFAULT 'active',  -- 'active', 'completed', 'archived'
-    metadata JSONB,  -- flexible storage for project-specific data
+
+    -- Three facets
+    facet_about JSONB DEFAULT '[]',
+    facet_uses JSONB DEFAULT '[]',
+    facet_needs JSONB DEFAULT '[]',
+
+    -- Embeddings for semantic matching (add later)
+    -- embedding_about vector(1536),
+    -- embedding_uses vector(1536),
+    -- embedding_needs vector(1536),
+
+    -- Link to beads molecule
+    beads_epic_id VARCHAR(50),
+
+    metadata JSONB,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

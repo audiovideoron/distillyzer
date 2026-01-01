@@ -559,6 +559,304 @@ def delete_skill(name: str) -> bool:
             return cur.rowcount > 0
 
 
+# --- Projects ---
+
+def create_project(
+    name: str,
+    description: str | None = None,
+    status: str = "active",
+    facet_about: list | None = None,
+    facet_uses: list | None = None,
+    facet_needs: list | None = None,
+    metadata: dict | None = None,
+) -> int:
+    """Create a project and return its ID."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO projects (name, description, status, facet_about, facet_uses, facet_needs, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    name,
+                    description,
+                    status,
+                    Jsonb(facet_about or []),
+                    Jsonb(facet_uses or []),
+                    Jsonb(facet_needs or []),
+                    Jsonb(metadata) if metadata else None,
+                ),
+            )
+            result = cur.fetchone()
+            conn.commit()
+            return result[0]
+
+
+def get_project(name: str) -> dict | None:
+    """Get a project by name."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, description, status, facet_about, facet_uses, facet_needs,
+                       beads_epic_id, metadata, created_at, updated_at
+                FROM projects WHERE name = %s
+                """,
+                (name,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "status": row[3],
+                    "facet_about": row[4] or [],
+                    "facet_uses": row[5] or [],
+                    "facet_needs": row[6] or [],
+                    "beads_epic_id": row[7],
+                    "metadata": row[8],
+                    "created_at": row[9],
+                    "updated_at": row[10],
+                }
+            return None
+
+
+def get_project_by_id(id: int) -> dict | None:
+    """Get a project by ID."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, description, status, facet_about, facet_uses, facet_needs,
+                       beads_epic_id, metadata, created_at, updated_at
+                FROM projects WHERE id = %s
+                """,
+                (id,),
+            )
+            row = cur.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "status": row[3],
+                    "facet_about": row[4] or [],
+                    "facet_uses": row[5] or [],
+                    "facet_needs": row[6] or [],
+                    "beads_epic_id": row[7],
+                    "metadata": row[8],
+                    "created_at": row[9],
+                    "updated_at": row[10],
+                }
+            return None
+
+
+def list_projects(status: str | None = None) -> list[dict]:
+    """List all projects, optionally filtered by status."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if status:
+                cur.execute(
+                    """
+                    SELECT id, name, description, status, facet_about, facet_uses, facet_needs,
+                           beads_epic_id, metadata, created_at, updated_at
+                    FROM projects WHERE status = %s ORDER BY name
+                    """,
+                    (status,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, name, description, status, facet_about, facet_uses, facet_needs,
+                           beads_epic_id, metadata, created_at, updated_at
+                    FROM projects ORDER BY name
+                    """
+                )
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "description": row[2],
+                    "status": row[3],
+                    "facet_about": row[4] or [],
+                    "facet_uses": row[5] or [],
+                    "facet_needs": row[6] or [],
+                    "beads_epic_id": row[7],
+                    "metadata": row[8],
+                    "created_at": row[9],
+                    "updated_at": row[10],
+                }
+                for row in cur.fetchall()
+            ]
+
+
+def update_project(
+    name: str,
+    description: str | None = None,
+    status: str | None = None,
+    facet_about: list | None = None,
+    facet_uses: list | None = None,
+    facet_needs: list | None = None,
+    metadata: dict | None = None,
+) -> bool:
+    """Update a project's fields. Only non-None values are updated."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE projects
+                SET description = COALESCE(%s, description),
+                    status = COALESCE(%s, status),
+                    facet_about = COALESCE(%s, facet_about),
+                    facet_uses = COALESCE(%s, facet_uses),
+                    facet_needs = COALESCE(%s, facet_needs),
+                    metadata = COALESCE(%s, metadata),
+                    updated_at = NOW()
+                WHERE name = %s
+                """,
+                (
+                    description,
+                    status,
+                    Jsonb(facet_about) if facet_about is not None else None,
+                    Jsonb(facet_uses) if facet_uses is not None else None,
+                    Jsonb(facet_needs) if facet_needs is not None else None,
+                    Jsonb(metadata) if metadata is not None else None,
+                    name,
+                ),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def delete_project(name: str) -> bool:
+    """Delete a project by name. Links are deleted via CASCADE."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM projects WHERE name = %s", (name,))
+            conn.commit()
+            return cur.rowcount > 0
+
+
+# --- Project Linking ---
+
+def link_project_item(project_id: int, item_id: int) -> bool:
+    """Link an item to a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO project_items (project_id, item_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (project_id, item_id),
+                )
+                conn.commit()
+                return True
+            except Exception:
+                return False
+
+
+def unlink_project_item(project_id: int, item_id: int) -> bool:
+    """Unlink an item from a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM project_items WHERE project_id = %s AND item_id = %s",
+                (project_id, item_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def get_project_items(project_id: int) -> list[dict]:
+    """Get all items linked to a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT i.id, i.source_id, i.type, i.title, i.url, i.metadata
+                FROM items i
+                JOIN project_items pi ON i.id = pi.item_id
+                WHERE pi.project_id = %s
+                ORDER BY i.id
+                """,
+                (project_id,),
+            )
+            return [
+                {
+                    "id": row[0],
+                    "source_id": row[1],
+                    "type": row[2],
+                    "title": row[3],
+                    "url": row[4],
+                    "metadata": row[5],
+                }
+                for row in cur.fetchall()
+            ]
+
+
+def link_project_skill(project_id: int, skill_id: int) -> bool:
+    """Link a skill to a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    """
+                    INSERT INTO project_skills (project_id, skill_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (project_id, skill_id),
+                )
+                conn.commit()
+                return True
+            except Exception:
+                return False
+
+
+def unlink_project_skill(project_id: int, skill_id: int) -> bool:
+    """Unlink a skill from a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM project_skills WHERE project_id = %s AND skill_id = %s",
+                (project_id, skill_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def get_project_skills(project_id: int) -> list[dict]:
+    """Get all skills linked to a project."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT s.id, s.name, s.type, s.description, s.created_at
+                FROM skills s
+                JOIN project_skills ps ON s.id = ps.skill_id
+                WHERE ps.project_id = %s
+                ORDER BY s.name
+                """,
+                (project_id,),
+            )
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "type": row[2],
+                    "description": row[3],
+                    "created_at": row[4],
+                }
+                for row in cur.fetchall()
+            ]
+
+
 # --- Stats ---
 
 def get_stats() -> dict:
