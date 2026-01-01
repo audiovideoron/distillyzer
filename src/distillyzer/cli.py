@@ -279,29 +279,35 @@ def _make_timestamp_link(url: str, timestamp: float | None) -> str:
 
 
 def _generate_index_html_grouped(grouped_items: dict[str, list[dict]], output_path: Path) -> None:
-    """Generate HTML index file grouped by source."""
+    """Generate HTML index file grouped by source with type-aware rendering."""
     html_parts = [
         "<!DOCTYPE html>",
         "<html><head>",
         "<meta charset='utf-8'>",
-        "<title>Distillyzer Index</title>",
+        "<title>Distillyzer Knowledge Index</title>",
         "<style>",
         "body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; line-height: 1.6; }",
         "h1 { color: #333; }",
-        "h2 { color: #444; margin-top: 2em; border-bottom: 2px solid #0066cc; padding-bottom: 0.3em; }",
         "ul { list-style: none; padding: 0; }",
         "li { margin: 0.5em 0; padding: 0.5em; background: #f9f9f9; border-radius: 4px; }",
         "a { color: #0066cc; text-decoration: none; }",
         "a:hover { text-decoration: underline; }",
-        "a .timestamp { font-family: monospace; color: #0066cc; margin-right: 1em; }",
-        "a:hover .timestamp { text-decoration: underline; }",
         ".preview { color: #333; }",
         ".source-section { margin: 2em 0; padding: 1em; border: 1px solid #ddd; border-radius: 8px; }",
-        ".source-header { font-size: 1.5em; font-weight: bold; color: #333; margin-bottom: 1em; }",
+        ".source-header { font-size: 1.3em; font-weight: bold; color: #333; margin-bottom: 0.5em; }",
+        ".source-type { font-size: 0.75em; color: #666; font-weight: normal; margin-left: 0.5em; }",
         "details { margin: 0.5em 0; }",
-        "summary { cursor: pointer; font-size: 1.1em; font-weight: 600; color: #555; padding: 0.5em; background: #f0f0f0; border-radius: 4px; }",
+        "summary { cursor: pointer; font-size: 1.05em; font-weight: 600; color: #555; padding: 0.5em; background: #f0f0f0; border-radius: 4px; }",
         "summary:hover { background: #e8e8e8; }",
-        "summary .chunk-count { font-size: 0.7em; font-weight: normal; color: #888; margin-left: 0.5em; }",
+        ".item-type { font-size: 0.7em; font-weight: normal; color: #888; margin-left: 0.5em; padding: 0.1em 0.4em; background: #e0e0e0; border-radius: 3px; }",
+        ".chunk-count { font-size: 0.7em; font-weight: normal; color: #888; margin-left: 0.5em; }",
+        "/* Video styles */",
+        ".video .timestamp { font-family: monospace; color: #0066cc; margin-right: 1em; }",
+        "/* Article styles */",
+        ".article .part-ref { font-family: monospace; color: #666; margin-right: 1em; font-size: 0.9em; }",
+        "/* Code styles */",
+        ".code .chunk-ref { font-family: monospace; color: #666; margin-right: 1em; font-size: 0.85em; }",
+        ".code .preview { font-family: monospace; font-size: 0.85em; background: #f5f5f5; padding: 0.2em 0.4em; border-radius: 2px; }",
         "</style>",
         "</head><body>",
         "<h1>Distillyzer Knowledge Index</h1>",
@@ -309,34 +315,58 @@ def _generate_index_html_grouped(grouped_items: dict[str, list[dict]], output_pa
 
     for source_name, items in grouped_items.items():
         total_chunks = sum(len(item["chunks"]) for item in items)
+        # Determine source type from first item
+        source_type = items[0].get("type", "unknown") if items else "unknown"
+        source_type_label = {"video": "YouTube", "article": "Website", "code_file": "Code"}.get(source_type, source_type)
+
         html_parts.append("<div class='source-section'>")
-        html_parts.append(f"<div class='source-header'>{source_name} ({len(items)} items, {total_chunks} chunks)</div>")
+        html_parts.append(f"<div class='source-header'>{source_name}<span class='source-type'>{source_type_label}</span></div>")
 
         for item in items:
             chunk_count = len(item["chunks"])
-            html_parts.append("<details>")
-            html_parts.append(f"<summary>{item['title']}<span class='chunk-count'>({chunk_count} chunks)</span></summary>")
-            is_youtube = "youtube.com" in (item["url"] or "") or "youtu.be" in (item["url"] or "")
+            item_type = item.get("type", "unknown")
+            type_label = {"video": "video", "article": "article", "code_file": "code"}.get(item_type, item_type)
+
+            html_parts.append(f"<details class='{type_label}'>")
+            html_parts.append(f"<summary>{item['title']}<span class='item-type'>{type_label}</span><span class='chunk-count'>({chunk_count} chunks)</span></summary>")
             html_parts.append("<ul>")
 
-            for chunk in item["chunks"]:
-                ts = chunk["timestamp_start"]
-                ts_str = _format_timestamp(ts)
+            for i, chunk in enumerate(item["chunks"]):
                 preview = chunk["content"][:80].replace("<", "&lt;").replace(">", "&gt;")
                 if len(chunk["content"]) > 80:
                     preview += "..."
 
-                if is_youtube and item["url"]:
-                    link = _make_timestamp_link(item["url"], ts)
+                if item_type == "video":
+                    # Video: timestamp link
+                    ts = chunk["timestamp_start"]
+                    ts_str = _format_timestamp(ts)
+                    link = _make_timestamp_link(item["url"], ts) if item["url"] else "#"
                     html_parts.append(
                         f'<li><a href="{link}"><span class="timestamp">{ts_str}</span></a>'
                         f'<span class="preview">{preview}</span></li>'
                     )
-                else:
+                elif item_type == "article":
+                    # Article: part reference, no timestamp
+                    part_num = i + 1
                     link = item["url"] or "#"
                     html_parts.append(
-                        f'<li><a href="{link}"><span class="timestamp">{ts_str}</span></a>'
+                        f'<li><a href="{link}"><span class="part-ref">[Part {part_num}]</span></a>'
                         f'<span class="preview">{preview}</span></li>'
+                    )
+                elif item_type == "code_file":
+                    # Code: chunk reference with monospace preview
+                    chunk_num = i + 1
+                    link = item["url"] or "#"
+                    html_parts.append(
+                        f'<li><a href="{link}"><span class="chunk-ref">[{chunk_num}]</span></a>'
+                        f'<span class="preview">{preview}</span></li>'
+                    )
+                else:
+                    # Unknown type: basic rendering
+                    link = item["url"] or "#"
+                    html_parts.append(
+                        f'<li><a href="{link}">'
+                        f'<span class="preview">{preview}</span></a></li>'
                     )
 
             html_parts.append("</ul>")
