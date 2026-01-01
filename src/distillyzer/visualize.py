@@ -14,8 +14,8 @@ load_dotenv()
 # Initialize Gemini client
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Model for image generation (Nano Banana Pro - best text rendering)
-IMAGE_MODEL = "gemini-3-pro-image-preview"
+# Model for image generation - configurable via environment variable
+IMAGE_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-preview-image-generation")
 
 
 def search_context(query: str, num_chunks: int = 3) -> str:
