@@ -148,14 +148,40 @@ from .visualize import (
     generate_from_chunk,
 )
 
-# Scoring
+# Scoring - Video
 from .scoring import (
+    # Video scoring
     score_video,
     filter_videos_by_score,
     is_educational,
-    ScoreBreakdown,
+    VideoScoreBreakdown,
     EDUCATIONAL_KEYWORDS,
-    NEGATIVE_KEYWORDS,
+    NEGATIVE_VIDEO_KEYWORDS,
+    # GitHub repo scoring
+    score_github_repo,
+    score_readme,
+    score_documentation,
+    score_repo_engagement,
+    score_repo_from_path,
+    filter_repos_by_score,
+    RepoScoreBreakdown,
+    # Backwards compat aliases
+    ScoreBreakdown,
+    score_engagement,
+    calculate_negative_penalty,
+)
+
+# Search query generation
+from .search_queries import (
+    SearchQuery,
+    SearchQuerySet,
+    generate_from_project,
+    generate_youtube_queries,
+    generate_github_queries,
+    generate_for_project_id,
+    generate_for_project_name,
+    YOUTUBE_TEMPLATES,
+    GITHUB_TEMPLATES,
 )
 
 # CLI app
@@ -282,11 +308,33 @@ __all__ = [
     # Visualize
     "generate_image",
     "generate_from_chunk",
-    # Scoring
+    # Scoring - Video
     "score_video",
     "filter_videos_by_score",
     "is_educational",
-    "ScoreBreakdown",
+    "VideoScoreBreakdown",
     "EDUCATIONAL_KEYWORDS",
-    "NEGATIVE_KEYWORDS",
+    "NEGATIVE_VIDEO_KEYWORDS",
+    # Scoring - GitHub repo
+    "score_github_repo",
+    "score_readme",
+    "score_documentation",
+    "score_repo_engagement",
+    "score_repo_from_path",
+    "filter_repos_by_score",
+    "RepoScoreBreakdown",
+    # Scoring - Backwards compat
+    "ScoreBreakdown",
+    "score_engagement",
+    "calculate_negative_penalty",
+    # Search query generation
+    "SearchQuery",
+    "SearchQuerySet",
+    "generate_from_project",
+    "generate_youtube_queries",
+    "generate_github_queries",
+    "generate_for_project_id",
+    "generate_for_project_name",
+    "YOUTUBE_TEMPLATES",
+    "GITHUB_TEMPLATES",
 ]
