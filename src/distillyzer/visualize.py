@@ -50,20 +50,37 @@ Style: clean, professional, easy to read. Use appropriate colors and layout for 
 Style: clean, professional, easy to read. Use appropriate colors and layout for the subject matter."""
 
 
+def create_artistic_prompt(concept: str, context: str) -> str:
+    """Create a prompt for generating artistic/creative imagery."""
+    if context:
+        return f"""{concept}
+
+Draw inspiration from this context:
+{context[:400]}
+
+Create an evocative, artistic image. Focus on mood, atmosphere, and emotional resonance rather than literal representation."""
+    else:
+        return f"""{concept}
+
+Create an evocative, artistic image. Focus on mood, atmosphere, and emotional resonance rather than literal representation."""
+
+
 def generate_image(
     concept: str,
     output_dir: Path | str = Path("images"),
     use_context: bool = True,
     num_chunks: int = 3,
+    artistic: bool = False,
 ) -> dict:
     """
-    Generate an informational image for a concept.
+    Generate an image for a concept.
 
     Args:
         concept: The concept or topic to visualize
         output_dir: Directory to save generated images
         use_context: Whether to search knowledge base for context
         num_chunks: Number of chunks to use for context
+        artistic: If True, generate artistic/creative imagery instead of diagrams
 
     Returns:
         dict with status, path, and any text response
@@ -76,8 +93,11 @@ def generate_image(
     if use_context:
         context = search_context(concept, num_chunks)
 
-    # Create prompt
-    prompt = create_diagram_prompt(concept, context)
+    # Create prompt based on mode
+    if artistic:
+        prompt = create_artistic_prompt(concept, context)
+    else:
+        prompt = create_diagram_prompt(concept, context)
 
     result = {
         "concept": concept,

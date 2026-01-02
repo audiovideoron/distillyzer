@@ -514,14 +514,19 @@ def visualize(
     chunk_id: int = typer.Option(None, "--chunk", "-c", help="Generate from specific chunk ID"),
     no_context: bool = typer.Option(False, "--no-context", help="Skip knowledge base search"),
     num_sources: int = typer.Option(3, "--sources", "-s", help="Number of sources for context"),
+    artistic: bool = typer.Option(False, "--artistic", "-a", help="Generate artistic imagery instead of diagrams"),
 ):
-    """Generate informational images using Gemini (Nano Banana)."""
+    """Generate images using Gemini (Nano Banana).
+
+    By default generates informational diagrams. Use --artistic for creative/evocative imagery.
+    """
     try:
         if chunk_id:
             console.print(f"[yellow]Generating image for chunk {chunk_id}...[/yellow]\n")
             result = viz.generate_from_chunk(chunk_id, output_dir=output_dir)
         else:
-            console.print(f"[yellow]Generating image for:[/yellow] {concept}\n")
+            mode = "[cyan]artistic[/cyan]" if artistic else "[cyan]diagram[/cyan]"
+            console.print(f"[yellow]Generating {mode} image for:[/yellow] {concept}\n")
             if not no_context:
                 console.print("[dim]Searching knowledge base for context...[/dim]")
             result = viz.generate_image(
@@ -529,6 +534,7 @@ def visualize(
                 output_dir=output_dir,
                 use_context=not no_context,
                 num_chunks=num_sources,
+                artistic=artistic,
             )
 
         if result["status"] == "success":
