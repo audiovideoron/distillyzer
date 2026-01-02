@@ -762,7 +762,7 @@ def artifacts_search(query: str):
 def artifacts_scaffold(
     name: str,
     project_name: str = typer.Option(None, "--name", "-n", help="Project name (defaults to artifact name)"),
-    output_dir: str = typer.Option("demos", "--output", "-o", help="Output directory"),
+    output_dir: str = typer.Option(None, "--output", "-o", help="Output directory (default: ~/projects)"),
 ):
     """Generate a working test project from an artifact.
 
@@ -781,6 +781,10 @@ def artifacts_scaffold(
         # Default project name from artifact
         if not project_name:
             project_name = artifact.get("name", "demo").lower().replace(" ", "-")[:30]
+
+        # Default output directory
+        if not output_dir:
+            output_dir = Path.home() / "projects"
 
         console.print(f"[yellow]Scaffolding:[/yellow] {artifact.get('name')}")
         console.print(f"[dim]Project:[/dim] {project_name}\n")
@@ -874,7 +878,7 @@ def demo(
             output_dir = Path.home() / "projects"
 
         output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        # Directory created lazily by build_demo only when output is produced
 
         console.print(f"\n[yellow]Building demo...[/yellow]")
 

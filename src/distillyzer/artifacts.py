@@ -338,7 +338,7 @@ The project should be self-contained and educational - I want to learn by seeing
         "description": description,
     }
 
-    # Create the project directory
+    # Create the project directory only when we have files to write (lazy creation)
     project_dir = output_dir / project_name
     project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -597,7 +597,7 @@ Build the simplest possible demo that proves understanding of this concept."""
             "raw_response": response_text[:1000],
         }
 
-    # Create project
+    # Create project directory only when we have files to write (lazy creation)
     project_dir = output_dir / project_name
     project_dir.mkdir(parents=True, exist_ok=True)
 

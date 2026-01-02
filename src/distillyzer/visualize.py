@@ -86,7 +86,7 @@ def generate_image(
         dict with status, path, and any text response
     """
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Directory created lazily only when image is saved
 
     # Get context from knowledge base if requested
     context = ""
@@ -122,7 +122,8 @@ def generate_image(
             if hasattr(part, "text") and part.text:
                 result["text_response"] = part.text
             elif hasattr(part, "inline_data") and part.inline_data:
-                # Save image
+                # Save image - create directory only when we have an image to save
+                output_dir.mkdir(parents=True, exist_ok=True)
                 filename = concept.lower().replace(" ", "_").replace(":", "")[:30] + ".png"
                 image_path = output_dir / filename
 
@@ -170,7 +171,7 @@ def generate_from_chunk(
     concept = content[:50].strip()
 
     output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Directory created lazily only when image is saved
 
     prompt = create_diagram_prompt(concept, context)
 
@@ -195,6 +196,8 @@ def generate_from_chunk(
             if hasattr(part, "text") and part.text:
                 result["text_response"] = part.text
             elif hasattr(part, "inline_data") and part.inline_data:
+                # Create directory only when we have an image to save
+                output_dir.mkdir(parents=True, exist_ok=True)
                 filename = f"chunk_{chunk_id}.png"
                 image_path = output_dir / filename
 
