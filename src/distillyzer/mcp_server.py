@@ -59,7 +59,7 @@ def stats() -> str:
 @mcp.tool()
 def harvest(url: str) -> str:
     """
-    Harvest a YouTube video, GitHub repo, or article.
+    Harvest a YouTube video or article.
 
     Downloads, transcribes (if video), chunks, and embeds the content.
     """
@@ -169,21 +169,6 @@ def project_discover(name: str) -> str:
 
 
 @mcp.tool()
-def extract(topic: str) -> str:
-    """
-    Extract patterns, prompts, or checklists from your knowledge.
-    """
-    result = subprocess.run(
-        ["dz", "extract", topic],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
-
-
-@mcp.tool()
 def list_items() -> str:
     """
     List harvested items in the knowledge base.
@@ -267,109 +252,6 @@ def generate_index(output: str = "index.html") -> str:
     if result.returncode != 0:
         return f"Error: {result.stderr}"
     return result.stdout or f"Index generated at {output}"
-
-
-# --- Artifacts Tools (5) ---
-
-
-@mcp.tool()
-def artifacts_list() -> str:
-    """
-    List all stored artifacts.
-
-    Shows artifacts grouped by source file with type and name.
-    """
-    result = subprocess.run(
-        ["dz", "artifacts", "list"],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
-
-
-@mcp.tool()
-def artifacts_show(name: str) -> str:
-    """
-    Show a specific artifact by name.
-
-    Displays the artifact's content, context, and source.
-
-    Args:
-        name: Name of the artifact to show
-    """
-    result = subprocess.run(
-        ["dz", "artifacts", "show", name],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
-
-
-@mcp.tool()
-def artifacts_apply(name: str, context: str) -> str:
-    """
-    Apply an artifact to your specific context.
-
-    Takes an artifact and adapts it to your project/situation.
-
-    Args:
-        name: Name of the artifact to apply
-        context: Your project/situation context (e.g., "I have a FastAPI backend")
-    """
-    result = subprocess.run(
-        ["dz", "artifacts", "apply", name, "--context", context],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
-
-
-@mcp.tool()
-def artifacts_search(query: str) -> str:
-    """
-    Search artifacts by keyword.
-
-    Args:
-        query: Search term to find matching artifacts
-    """
-    result = subprocess.run(
-        ["dz", "artifacts", "search", query],
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
-
-
-@mcp.tool()
-def artifacts_scaffold(name: str, project_name: str = "", output_dir: str = "") -> str:
-    """
-    Generate a working test project from an artifact.
-
-    Creates a runnable demo that implements the technique.
-
-    Args:
-        name: Name of the artifact to scaffold from
-        project_name: Project name (defaults to artifact name)
-        output_dir: Output directory (default: ~/projects)
-    """
-    cmd = ["dz", "artifacts", "scaffold", name]
-    if project_name:
-        cmd.extend(["--name", project_name])
-    if output_dir:
-        cmd.extend(["--output", output_dir])
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        return f"Error: {result.stderr}"
-    return result.stdout
 
 
 # --- Skills Tools (5) ---

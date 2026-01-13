@@ -1,18 +1,18 @@
 # Distillyzer
 
-Build a personal knowledge base from YouTube videos and GitHub repos. Transcribe, embed, and semantically search everything you care about.
+Build a personal knowledge base from YouTube videos and articles. Transcribe, embed, and semantically search everything you care about.
 
 ## Why
 
-YouTube's search is optimized for engagement, not learning. You watch a great 2-hour tutorial, forget where they explained that one thing, and spend 20 minutes scrubbing. GitHub repos have answers buried in code you'll never find with grep.
+YouTube's search is optimized for engagement, not learning. You watch a great 2-hour tutorial, forget where they explained that one thing, and spend 20 minutes scrubbing.
 
-Distillyzer extracts knowledge from video and code, chunks it with timestamps, embeds it in a vector database, and lets you query it conversationally.
+Distillyzer extracts knowledge from video and articles, chunks it with timestamps, embeds it in a vector database, and lets you query it conversationally.
 
 ## How It Works
 
 ```
 YouTube URL → yt-dlp → Whisper API → Chunks with timestamps → Embeddings → PostgreSQL/pgvector
-GitHub URL  → git clone → Parse files → Chunks → Embeddings → PostgreSQL/pgvector
+Article URL → trafilatura → Parse content → Chunks → Embeddings → PostgreSQL/pgvector
                                                                       ↓
                                               Your question → Embedding → Similarity search → Claude → Answer with sources
 ```
@@ -51,19 +51,17 @@ dz chat
 
 | Command | Description |
 |---------|-------------|
-| `dz harvest <url>` | Harvest a YouTube video, GitHub repo, or article |
+| `dz harvest <url>` | Harvest a YouTube video or article |
 | `dz query "question"` | Semantic search with Claude-generated answers |
 | `dz chat` | Interactive conversation with your knowledge base |
 | `dz stats` | Show what's in your knowledge base |
 | `dz search "topic"` | Search YouTube for videos on a topic |
 | `dz harvest-channel <url>` | List videos from a channel for selective harvesting |
 
-### Knowledge Extraction
+### Tools
 
 | Command | Description |
 |---------|-------------|
-| `dz extract "topic"` | Extract patterns, prompts, checklists from your knowledge |
-| `dz demo "topic"` | Build a hello-world project from a lesson topic |
 | `dz visualize "concept"` | Generate diagrams or artistic imagery via Gemini |
 | `dz index` | Generate HTML index with timestamp links |
 | `dz embed [item_id]` | Re-embed items (after model/chunking changes) |
@@ -81,9 +79,8 @@ dz chat
 
 | Command | Description |
 |---------|-------------|
-| `dz artifacts list/show/apply` | Manage extracted artifacts |
 | `dz skills list/create/update` | Manage presentation skills |
-| `dz sources list/delete` | Manage channels and repos |
+| `dz sources list/delete` | Manage channels and sites |
 | `dz items list/delete` | Manage harvested content |
 
 ## Example
@@ -109,7 +106,7 @@ Sources:
 - **OpenAI Whisper API** - Transcription with timestamps
 - **OpenAI text-embedding-3-small** - 1536-dim embeddings
 - **PostgreSQL + pgvector** - Vector similarity search
-- **Claude API** - Answer generation and artifact extraction
+- **Claude API** - Answer generation
 - **Gemini API** - Image generation for visualizations
 - **Typer + Rich** - CLI
 

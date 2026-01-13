@@ -54,34 +54,6 @@ class TestParseYoutubeUrl:
         assert result["id"] is None
 
 
-class TestParseGithubUrl:
-    """Tests for GitHub URL parsing."""
-
-    def test_parse_repo_url(self):
-        """Test parsing standard repo URL."""
-        result = harvest.parse_github_url("https://github.com/owner/repo")
-        assert result["owner"] == "owner"
-        assert result["repo"] == "repo"
-
-    def test_parse_repo_url_with_git(self):
-        """Test parsing repo URL with .git extension."""
-        result = harvest.parse_github_url("https://github.com/owner/repo.git")
-        assert result["owner"] == "owner"
-        assert result["repo"] == "repo"
-
-    def test_parse_repo_url_with_path(self):
-        """Test parsing repo URL with additional path."""
-        result = harvest.parse_github_url("https://github.com/owner/repo/tree/main/src")
-        assert result["owner"] == "owner"
-        assert result["repo"] == "repo"
-
-    def test_parse_invalid_github_url(self):
-        """Test parsing invalid GitHub URL."""
-        result = harvest.parse_github_url("https://gitlab.com/owner/repo")
-        assert result["owner"] is None
-        assert result["repo"] is None
-
-
 class TestGetVideoInfo:
     """Tests for getting video info via yt-dlp."""
 
@@ -240,67 +212,6 @@ class TestHarvestVideo:
             assert result["status"] == "downloaded"
             assert result["item_id"] == 42
             assert result["title"] == "New Video"
-
-
-class TestHarvestRepo:
-    """Tests for repository harvesting."""
-
-    def test_harvest_repo_invalid_url(self):
-        """Test harvesting with invalid GitHub URL."""
-        with pytest.raises(ValueError):
-            harvest.harvest_repo("https://invalid.com/repo")
-
-    def test_harvest_repo_already_exists(self):
-        """Test harvesting when repo already exists."""
-        with patch("distillyzer.harvest.db") as mock_db:
-            mock_db.get_source_by_url.return_value = {"id": 1}
-
-            result = harvest.harvest_repo("https://github.com/owner/repo")
-
-            assert result["status"] == "already_exists"
-
-    def test_harvest_repo_success(self, tmp_path):
-        """Test successful repository harvesting."""
-        # Create mock repo structure
-        repo_dir = tmp_path / "repo"
-        repo_dir.mkdir()
-        (repo_dir / "main.py").write_text('print("hello")')
-        (repo_dir / "README.md").write_text("# Test Repo")
-
-        with patch("distillyzer.harvest.db") as mock_db, \
-             patch("distillyzer.harvest.Repo") as mock_repo_class:
-
-            mock_db.get_source_by_url.return_value = None
-            mock_db.create_source.return_value = 1
-            mock_db.create_item.return_value = 1
-
-            # Mock the clone operation
-            mock_repo_class.clone_from.return_value = MagicMock()
-
-            result = harvest.harvest_repo(
-                "https://github.com/owner/repo",
-                clone_dir=tmp_path,
-            )
-
-            assert result["status"] == "cloned"
-            assert result["source_id"] == 1
-            assert result["name"] == "owner/repo"
-
-    def test_harvest_repo_clone_error(self, tmp_path):
-        """Test harvesting when git clone fails."""
-        from git.exc import GitCommandError
-
-        with patch("distillyzer.harvest.db") as mock_db, \
-             patch("distillyzer.harvest.Repo") as mock_repo_class:
-
-            mock_db.get_source_by_url.return_value = None
-            mock_repo_class.clone_from.side_effect = GitCommandError("clone", 1)
-
-            with pytest.raises(harvest.GitCloneError):
-                harvest.harvest_repo(
-                    "https://github.com/owner/repo",
-                    clone_dir=tmp_path,
-                )
 
 
 class TestHarvestArticle:

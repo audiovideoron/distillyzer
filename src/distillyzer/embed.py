@@ -304,70 +304,6 @@ def chunk_text(
     return chunks
 
 
-def chunk_code(text: str, max_tokens: int = None) -> list[str]:
-    """
-    Split code into chunks, trying to preserve function/class boundaries.
-
-    Args:
-        text: The code text to chunk.
-        max_tokens: Maximum tokens per chunk. Defaults to EMBED_MAX_TOKENS (env var or 500).
-
-    Returns:
-        List of code chunks.
-    """
-    if max_tokens is None:
-        max_tokens = EMBED_MAX_TOKENS
-    if not text.strip():
-        return []
-
-    enc = tiktoken.get_encoding("cl100k_base")
-
-    if len(enc.encode(text)) <= max_tokens:
-        return [text]
-
-    # Split by double newlines (paragraph/function boundaries)
-    blocks = text.split("\n\n")
-    chunks = []
-    current_chunk = []
-    current_tokens = 0
-
-    for block in blocks:
-        block_tokens = len(enc.encode(block))
-
-        if block_tokens > max_tokens:
-            # Block too large, split by lines
-            if current_chunk:
-                chunks.append("\n\n".join(current_chunk))
-                current_chunk = []
-                current_tokens = 0
-
-            lines = block.split("\n")
-            line_chunk = []
-            line_tokens = 0
-            for line in lines:
-                lt = len(enc.encode(line))
-                if line_tokens + lt > max_tokens and line_chunk:
-                    chunks.append("\n".join(line_chunk))
-                    line_chunk = []
-                    line_tokens = 0
-                line_chunk.append(line)
-                line_tokens += lt
-            if line_chunk:
-                chunks.append("\n".join(line_chunk))
-        elif current_tokens + block_tokens > max_tokens:
-            chunks.append("\n\n".join(current_chunk))
-            current_chunk = [block]
-            current_tokens = block_tokens
-        else:
-            current_chunk.append(block)
-            current_tokens += block_tokens
-
-    if current_chunk:
-        chunks.append("\n\n".join(current_chunk))
-
-    return chunks
-
-
 @openai_retry
 def get_embedding(text: str) -> list[float]:
     """Get embedding for a single text using OpenAI API.
@@ -519,16 +455,12 @@ def embed_all_projects() -> list[dict]:
 def embed_text_content(
     item_id: int,
     text: str,
-    is_code: bool = False,
 ) -> int:
     """
-    Chunk and embed text content (transcript or code).
+    Chunk and embed text content.
     Returns number of chunks stored.
     """
-    if is_code:
-        chunks = chunk_code(text)
-    else:
-        chunks = chunk_text(text)
+    chunks = chunk_text(text)
 
     if not chunks:
         return 0
@@ -670,43 +602,5 @@ def reembed_all_items(
         "failed": failed,
         "total_old_chunks": total_old_chunks,
         "total_new_chunks": total_new_chunks,
-        "errors": errors,
-    }
-
-
-def embed_repo_files(
-    file_items: list[dict],
-    progress_callback: callable = None,
-) -> dict:
-    """
-    Embed code files from a harvested repo.
-    file_items should have: item_id, path, content, extension
-
-    Returns dict with total_files, total_chunks, errors.
-    """
-    total_chunks = 0
-    errors = []
-
-    for i, file_item in enumerate(file_items):
-        try:
-            # Skip non-code files from embedding (keep .md and .txt as text)
-            is_code = file_item["extension"] not in {".md", ".txt"}
-
-            num_chunks = embed_text_content(
-                file_item["item_id"],
-                file_item["content"],
-                is_code=is_code,
-            )
-            total_chunks += num_chunks
-
-            if progress_callback:
-                progress_callback(i + 1, len(file_items), file_item["path"], num_chunks)
-
-        except Exception as e:
-            errors.append({"path": file_item["path"], "error": str(e)})
-
-    return {
-        "total_files": len(file_items),
-        "total_chunks": total_chunks,
         "errors": errors,
     }

@@ -1,4 +1,4 @@
-"""Harvest content from YouTube and GitHub."""
+"""Harvest content from YouTube and articles."""
 
 import json
 import re
@@ -7,8 +7,6 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from git import Repo
-from git.exc import GitCommandError
 import trafilatura
 
 from . import db
@@ -21,11 +19,6 @@ class HarvestError(Exception):
 
 class YtDlpError(HarvestError):
     """Exception raised when yt-dlp command fails."""
-    pass
-
-
-class GitCloneError(HarvestError):
-    """Exception raised when git clone fails."""
     pass
 
 
@@ -229,97 +222,6 @@ def harvest_channel(channel_url: str, limit: int = 50) -> list[dict]:
                 # Skip malformed lines
                 continue
     return videos
-
-
-# --- GitHub ---
-
-def parse_github_url(url: str) -> dict:
-    """Parse GitHub URL to extract owner and repo."""
-    pattern = r"github\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_.-]+)"
-    match = re.search(pattern, url)
-    if match:
-        return {"owner": match.group(1), "repo": match.group(2).rstrip(".git")}
-    return {"owner": None, "repo": None}
-
-
-def harvest_repo(url: str, clone_dir: Path | None = None) -> dict:
-    """
-    Clone a GitHub repo and index its files.
-    Returns dict with source_id and file count.
-    """
-    parsed = parse_github_url(url)
-    if not parsed["owner"]:
-        raise ValueError(f"Invalid GitHub URL: {url}")
-
-    repo_name = f"{parsed['owner']}/{parsed['repo']}"
-
-    # Check if already harvested
-    existing = db.get_source_by_url(url)
-    if existing:
-        return {"source_id": existing["id"], "status": "already_exists", "name": repo_name}
-
-    # Clone directory
-    if clone_dir is None:
-        clone_dir = Path(tempfile.mkdtemp(prefix="distillyzer_repo_"))
-    repo_path = clone_dir / parsed["repo"]
-
-    # Clone repo
-    try:
-        Repo.clone_from(url, repo_path, depth=1)
-    except GitCommandError as e:
-        raise GitCloneError(f"Failed to clone repository {url}: {e}")
-    except Exception as e:
-        raise GitCloneError(f"Unexpected error cloning repository {url}: {e}")
-
-    # Create source in DB
-    source_id = db.create_source(
-        type="github_repo",
-        name=repo_name,
-        url=url,
-        metadata={"owner": parsed["owner"], "repo": parsed["repo"]},
-    )
-
-    # Index code files
-    code_extensions = {".py", ".js", ".ts", ".go", ".rs", ".java", ".cpp", ".c", ".h", ".md", ".txt"}
-    files_indexed = 0
-    file_items = []  # Store file data for embedding
-
-    for file_path in repo_path.rglob("*"):
-        if file_path.is_file() and file_path.suffix in code_extensions:
-            # Skip hidden dirs, node_modules, etc.
-            if any(part.startswith(".") or part == "node_modules" for part in file_path.parts):
-                continue
-
-            rel_path = file_path.relative_to(repo_path)
-            try:
-                content = file_path.read_text(encoding="utf-8", errors="ignore")
-                if len(content) > 100:  # Skip tiny files
-                    item_id = db.create_item(
-                        source_id=source_id,
-                        type="code_file",
-                        title=str(rel_path),
-                        url=f"{url}/blob/main/{rel_path}",
-                        metadata={"extension": file_path.suffix, "size": len(content)},
-                    )
-                    files_indexed += 1
-                    # Store for embedding
-                    file_items.append({
-                        "item_id": item_id,
-                        "path": str(rel_path),
-                        "content": content,
-                        "extension": file_path.suffix,
-                    })
-            except Exception:
-                pass
-
-    return {
-        "source_id": source_id,
-        "name": repo_name,
-        "files_indexed": files_indexed,
-        "file_items": file_items,  # Include file data for embedding
-        "repo_path": str(repo_path),
-        "status": "cloned",
-    }
 
 
 # --- Articles ---
