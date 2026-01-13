@@ -8,9 +8,11 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
 
-from . import db, harvest as harv, transcribe, embed as emb, query as q, visualize as viz, search_queries, scoring
+from . import db, harvest as harv, transcribe, embed as emb, query as q, visualize as viz, extract as ext, artifacts as art, search_queries, scoring
 
 app = typer.Typer(help="Distillyzer - Harvest knowledge, query it, use it.")
+artifacts_app = typer.Typer(help="Manage and use extracted artifacts.")
+app.add_typer(artifacts_app, name="artifacts")
 skills_app = typer.Typer(help="Manage presentation skills.")
 app.add_typer(skills_app, name="skills")
 projects_app = typer.Typer(help="Manage projects with faceted organization.")
@@ -65,14 +67,49 @@ def search(query: str, limit: int = 10):
 def harvest(
     url: str,
     skip_transcribe: bool = typer.Option(False, "--skip-transcribe", help="Skip transcription"),
-    language: str = typer.Option(None, "--language", "-l", help="Language code for transcription (e.g., 'de', 'en', 'es'). Auto-detects if not specified."),
 ):
-    """Harvest a YouTube video or article."""
+    """Harvest a YouTube video or GitHub repo."""
     console.print(f"[yellow]Harvesting:[/yellow] {url}\n")
 
     try:
         # Detect URL type
-        if "youtube.com" in url or "youtu.be" in url:
+        if "github.com" in url:
+            # GitHub repo
+            console.print("[cyan]Detected GitHub repo[/cyan]")
+            result = harv.harvest_repo(url)
+
+            if result["status"] == "already_exists":
+                console.print(f"[yellow]Already harvested:[/yellow] {result['name']}")
+                return
+
+            console.print(f"[green]Cloned:[/green] {result['name']}")
+            console.print(f"[green]Files indexed:[/green] {result['files_indexed']}")
+
+            # Embed code files
+            if result.get("file_items"):
+                console.print("\n[yellow]Embedding code files...[/yellow]")
+
+                def progress(current, total, path, chunks):
+                    console.print(f"  [{current}/{total}] {path} ({chunks} chunks)")
+
+                embed_result = emb.embed_repo_files(
+                    result["file_items"],
+                    progress_callback=progress,
+                )
+
+                console.print(f"\n[green]Embedded:[/green] {embed_result['total_files']} files, {embed_result['total_chunks']} chunks")
+
+                if embed_result["errors"]:
+                    console.print(f"[yellow]Errors:[/yellow] {len(embed_result['errors'])}")
+                    for err in embed_result["errors"][:3]:
+                        console.print(f"  - {err['path']}: {err['error']}")
+
+                # Auto-regenerate index
+                console.print("[yellow]Updating index...[/yellow]")
+                _regenerate_index()
+                console.print("[green]Index updated[/green]")
+
+        elif "youtube.com" in url or "youtu.be" in url:
             # YouTube video
             console.print("[cyan]Detected YouTube video[/cyan]")
             result = harv.harvest_video(url)
@@ -87,11 +124,8 @@ def harvest(
             console.print(f"[dim]Duration:[/dim] {dur // 60}:{dur % 60:02d}")
 
             if not skip_transcribe:
-                if language:
-                    console.print(f"\n[yellow]Transcribing (language: {language})...[/yellow]")
-                else:
-                    console.print("\n[yellow]Transcribing (auto-detect)...[/yellow]")
-                transcript = transcribe.transcribe_audio(result["audio_path"], language=language)
+                console.print("\n[yellow]Transcribing...[/yellow]")
+                transcript = transcribe.transcribe_audio(result["audio_path"])
                 console.print(f"[green]Transcribed:[/green] {len(transcript['text'])} characters")
 
                 # Convert to timed chunks and embed
@@ -126,6 +160,7 @@ def harvest(
             num_chunks = emb.embed_text_content(
                 result["item_id"],
                 result["content"],
+                is_code=False,
             )
             console.print(f"[green]Stored:[/green] {num_chunks} chunks")
 
@@ -513,6 +548,366 @@ def visualize(
             console.print(f"[red]Failed:[/red] {result['status']}")
             if result.get("text_response"):
                 console.print(f"[dim]Response:[/dim] {result['text_response']}")
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+
+@app.command()
+def extract(
+    topic: str = typer.Argument(None, help="Topic to search for artifacts"),
+    artifact_type: str = typer.Option("all", "--type", "-t", help="Artifact type: prompt, pattern, checklist, rule, tool, all"),
+    sources: int = typer.Option(10, "--sources", "-s", help="Number of source chunks to search"),
+    item_id: int = typer.Option(None, "--item", "-i", help="Extract from specific item ID"),
+    output: str = typer.Option(None, "--output", "-o", help="Save to file (JSON)"),
+):
+    """Extract implementation artifacts from your knowledge base.
+
+    Examples:
+        dz extract "agentic engineering"
+        dz extract "prompt design" --type prompt
+        dz extract --item 3 --type checklist
+    """
+    try:
+        if not topic and not item_id:
+            console.print("[red]Error:[/red] Provide a topic or --item ID")
+            return
+
+        if item_id:
+            console.print(f"[yellow]Extracting from item {item_id}...[/yellow]\n")
+            result = ext.extract_from_item(item_id, artifact_type=artifact_type)
+        else:
+            console.print(f"[yellow]Extracting artifacts for:[/yellow] {topic}\n")
+            result = ext.extract_artifacts(topic, artifact_type=artifact_type, num_sources=sources)
+
+        if result["status"] != "success":
+            console.print(f"[red]{result.get('message', 'Extraction failed')}[/red]")
+            return
+
+        # Display artifacts
+        artifacts = result.get("artifacts", [])
+        if not artifacts:
+            console.print("[dim]No artifacts found[/dim]")
+            return
+
+        for i, artifact in enumerate(artifacts, 1):
+            atype = artifact.get("type", "unknown").upper()
+            name = artifact.get("name", "Unnamed")
+            content = artifact.get("content", "")
+            context = artifact.get("context", "")
+
+            # Create panel for each artifact
+            panel_content = f"{content}\n\n[dim]Context: {context}[/dim]"
+            console.print(Panel(
+                panel_content,
+                title=f"[bold]{atype}[/bold] {name}",
+                border_style="cyan" if atype != "RAW" else "yellow",
+            ))
+            console.print()
+
+        # Show sources
+        if result.get("sources"):
+            console.print("[dim]Sources used:[/dim]")
+            for src in result["sources"][:5]:
+                title = src.get("title", "?")[:40]
+                console.print(f"  - {title}")
+
+        # Show notes
+        if result.get("notes"):
+            console.print(f"\n[dim]Notes: {result['notes']}[/dim]")
+
+        console.print(f"\n[dim]Artifacts: {len(artifacts)} | Tokens: {result.get('tokens_used', '?')}[/dim]")
+
+        # Save to file if requested
+        if output:
+            import json
+            output_path = Path(output)
+            with open(output_path, "w") as f:
+                json.dump(result, f, indent=2, default=str)
+            console.print(f"[green]Saved to:[/green] {output_path}")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+
+# --- Artifacts subcommands ---
+
+@artifacts_app.command("list")
+def artifacts_list():
+    """List all stored artifacts."""
+    try:
+        artifacts = art.list_all_artifacts()
+
+        if not artifacts:
+            console.print("[dim]No artifacts found. Extract some first:[/dim]")
+            console.print("  dz extract \"topic\" -o artifacts/topic.json")
+            return
+
+        # Group by source file
+        by_file = {}
+        for a in artifacts:
+            source = a.get("_source_file", "unknown")
+            if source not in by_file:
+                by_file[source] = []
+            by_file[source].append(a)
+
+        for source, file_artifacts in by_file.items():
+            console.print(f"\n[bold cyan]{source}.json[/bold cyan]")
+            table = Table(show_header=True, box=None)
+            table.add_column("#", style="dim", width=3)
+            table.add_column("Type", style="yellow", width=10)
+            table.add_column("Name", style="green")
+
+            for i, a in enumerate(file_artifacts, 1):
+                table.add_row(
+                    str(i),
+                    a.get("type", "?")[:10],
+                    a.get("name", "Unnamed")[:50],
+                )
+            console.print(table)
+
+        console.print(f"\n[dim]Total: {len(artifacts)} artifacts[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@artifacts_app.command("show")
+def artifacts_show(name: str):
+    """Show a specific artifact by name."""
+    try:
+        artifact = art.find_artifact(name)
+
+        if not artifact:
+            console.print(f"[red]Artifact not found:[/red] {name}")
+            console.print("[dim]Use 'dz artifacts list' to see available artifacts[/dim]")
+            return
+
+        atype = artifact.get("type", "unknown").upper()
+        aname = artifact.get("name", "Unnamed")
+        content = artifact.get("content", "")
+        context = artifact.get("context", "")
+        source = artifact.get("_source_file", "")
+
+        console.print(Panel(
+            f"{content}\n\n[dim]Context: {context}[/dim]",
+            title=f"[bold]{atype}[/bold] {aname}",
+            subtitle=f"[dim]from {source}.json[/dim]" if source else None,
+            border_style="cyan",
+        ))
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@artifacts_app.command("apply")
+def artifacts_apply(
+    name: str,
+    context: str = typer.Option(..., "--context", "-c", help="Your project/situation context"),
+):
+    """Apply an artifact to your specific context.
+
+    Example:
+        dz artifacts apply "Agentic Layer Pattern" -c "I have a FastAPI backend"
+    """
+    try:
+        artifact = art.find_artifact(name)
+
+        if not artifact:
+            console.print(f"[red]Artifact not found:[/red] {name}")
+            return
+
+        console.print(f"[yellow]Applying:[/yellow] {artifact.get('name')}")
+        console.print(f"[dim]To context:[/dim] {context}\n")
+
+        result = art.apply_artifact(artifact, context)
+
+        console.print(Panel(
+            Markdown(result["applied_guidance"]),
+            title=f"Applied: {result['artifact_name']}",
+            border_style="green",
+        ))
+
+        console.print(f"\n[dim]Tokens: {result['tokens_used']}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+
+@artifacts_app.command("search")
+def artifacts_search(query: str):
+    """Search artifacts by keyword."""
+    try:
+        results = art.search_artifacts(query)
+
+        if not results:
+            console.print(f"[dim]No artifacts matching:[/dim] {query}")
+            return
+
+        console.print(f"[green]Found {len(results)} artifacts:[/green]\n")
+
+        for artifact in results:
+            atype = artifact.get("type", "?").upper()
+            aname = artifact.get("name", "Unnamed")
+            source = artifact.get("_source_file", "")
+            console.print(f"  [{atype}] {aname} [dim]({source})[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+
+
+@artifacts_app.command("scaffold")
+def artifacts_scaffold(
+    name: str,
+    project_name: str = typer.Option(None, "--name", "-n", help="Project name (defaults to artifact name)"),
+    output_dir: str = typer.Option(None, "--output", "-o", help="Output directory (default: ~/projects)"),
+):
+    """Generate a working test project from an artifact.
+
+    Creates a runnable demo that implements the technique.
+
+    Example:
+        dz artifacts scaffold "Core Four" -n core-four-demo
+    """
+    try:
+        artifact = art.find_artifact(name)
+
+        if not artifact:
+            console.print(f"[red]Artifact not found:[/red] {name}")
+            return
+
+        # Default project name from artifact
+        if not project_name:
+            project_name = artifact.get("name", "demo").lower().replace(" ", "-")[:30]
+
+        # Default output directory
+        if not output_dir:
+            output_dir = Path.home() / "projects"
+
+        console.print(f"[yellow]Scaffolding:[/yellow] {artifact.get('name')}")
+        console.print(f"[dim]Project:[/dim] {project_name}\n")
+
+        result = art.scaffold_project(
+            artifact,
+            project_name,
+            Path(output_dir),
+        )
+
+        if result["status"] != "success":
+            console.print(f"[red]Failed:[/red] {result.get('message', 'Unknown error')}")
+            if result.get("raw_response"):
+                console.print(f"[dim]{result['raw_response'][:500]}...[/dim]")
+            return
+
+        console.print(f"[green]Created:[/green] {result['project_dir']}\n")
+
+        console.print("[cyan]Files:[/cyan]")
+        for f in result["files_created"]:
+            console.print(f"  {f}")
+
+        if result.get("run_command"):
+            console.print(f"\n[yellow]To run:[/yellow]")
+            console.print(f"  cd {result['project_dir']}")
+            console.print(f"  {result['run_command']}")
+
+        if result.get("description"):
+            console.print(f"\n[dim]{result['description']}[/dim]")
+
+        console.print(f"\n[dim]Tokens: {result.get('tokens_used', '?')}[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+
+@app.command()
+def demo(
+    topic: str,
+    project_name: str = typer.Option(None, "--name", "-n", help="Project name"),
+    output_dir: str = typer.Option(None, "--output", "-o", help="Output directory"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+):
+    """Build a hello world demo from a lesson topic.
+
+    Searches your knowledge base, identifies the core lesson,
+    proposes a minimal demo, and builds it after confirmation.
+
+    Example:
+        dz demo "agentic layer"
+        dz demo "prompt engineering" -n prompt-demo -o ~/projects/
+    """
+    try:
+        console.print(f"[yellow]Analyzing:[/yellow] {topic}\n")
+
+        # Step 1: Analyze and propose
+        analysis = art.analyze_for_demo(topic)
+
+        if analysis["status"] != "success":
+            console.print(f"[red]{analysis.get('message', 'Analysis failed')}[/red]")
+            return
+
+        # Show what we found
+        console.print(f"[cyan]Found {len(analysis['sources'])} sources:[/cyan]")
+        for src in analysis["sources"][:3]:
+            console.print(f"  - {src['title']}")
+
+        console.print(f"\n[green]Core lesson:[/green]")
+        console.print(f"  {analysis['core_lesson']}")
+
+        console.print(f"\n[green]Proposed hello world:[/green]")
+        console.print(f"  {analysis['demo_concept']}")
+
+        if analysis.get("proves"):
+            console.print(f"\n[dim]This proves: {analysis['proves']}[/dim]")
+
+        # Step 2: Confirm
+        if not yes:
+            console.print()
+            proceed = typer.confirm("Build this demo?")
+            if not proceed:
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+
+        # Step 3: Build
+        if not project_name:
+            project_name = topic.lower().replace(" ", "-")[:20] + "-demo"
+
+        if not output_dir:
+            output_dir = Path.home() / "projects"
+
+        output_path = Path(output_dir)
+        # Directory created lazily by build_demo only when output is produced
+
+        console.print(f"\n[yellow]Building demo...[/yellow]")
+
+        result = art.build_demo(
+            topic=topic,
+            core_lesson=analysis["core_lesson"],
+            demo_concept=analysis["demo_concept"],
+            project_name=project_name,
+            output_dir=output_path,
+        )
+
+        if result["status"] != "success":
+            console.print(f"[red]Failed:[/red] {result.get('message', 'Unknown error')}")
+            return
+
+        console.print(f"\n[green]Created:[/green] {result['project_dir']}")
+
+        console.print(f"\n[cyan]Files:[/cyan]")
+        for f in result["files_created"]:
+            console.print(f"  {f}")
+
+        if result.get("run_command"):
+            console.print(f"\n[yellow]To run:[/yellow]")
+            console.print(f"  cd {result['project_dir']}")
+            console.print(f"  {result['run_command']}")
+
+        total_tokens = analysis.get("tokens_used", 0) + result.get("tokens_used", 0)
+        console.print(f"\n[dim]Tokens: {total_tokens}[/dim]")
+
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise

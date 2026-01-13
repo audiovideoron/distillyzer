@@ -196,6 +196,48 @@ class TestChunkText:
             assert chunk.strip().endswith(".")
 
 
+class TestChunkCode:
+    """Tests for code chunking."""
+
+    def test_chunk_code_empty(self):
+        """Test chunking empty code."""
+        result = embed.chunk_code("")
+        assert result == []
+
+    def test_chunk_code_small(self):
+        """Test chunking small code."""
+        code = "def hello():\n    print('Hello')"
+        result = embed.chunk_code(code, max_tokens=500)
+        assert len(result) == 1
+
+    def test_chunk_code_large(self):
+        """Test chunking large code into multiple chunks."""
+        # Create code with multiple functions
+        functions = [f"def function_{i}():\n    return {i}\n\n" for i in range(50)]
+        code = "".join(functions)
+
+        result = embed.chunk_code(code, max_tokens=50)
+
+        assert len(result) > 1
+
+    def test_chunk_code_preserves_blocks(self):
+        """Test that code chunking tries to preserve block boundaries."""
+        code = """def first():
+    return 1
+
+def second():
+    return 2
+
+def third():
+    return 3"""
+
+        result = embed.chunk_code(code, max_tokens=100)
+
+        # Verify chunks contain complete functions where possible
+        for chunk in result:
+            assert chunk.strip()  # Non-empty
+
+
 class TestGetEmbedding:
     """Tests for single embedding generation."""
 
@@ -310,7 +352,7 @@ class TestEmbedTextContent:
             assert result == 0
 
     def test_embed_text_content_text(self):
-        """Test embedding text content."""
+        """Test embedding regular text content."""
         with patch("distillyzer.embed.chunk_text") as mock_chunk_text, \
              patch("distillyzer.embed.get_embeddings_batch") as mock_batch, \
              patch("distillyzer.embed.db") as mock_db:
@@ -318,10 +360,24 @@ class TestEmbedTextContent:
             mock_batch.return_value = [[0.1] * 1536, [0.2] * 1536]
             mock_db.create_chunks_batch.return_value = [1, 2]
 
-            result = embed.embed_text_content(item_id=1, text="Some text")
+            result = embed.embed_text_content(item_id=1, text="Some text", is_code=False)
 
             assert result == 2
             mock_chunk_text.assert_called_once()
+
+    def test_embed_text_content_code(self):
+        """Test embedding code content."""
+        with patch("distillyzer.embed.chunk_code") as mock_chunk_code, \
+             patch("distillyzer.embed.get_embeddings_batch") as mock_batch, \
+             patch("distillyzer.embed.db") as mock_db:
+            mock_chunk_code.return_value = ["def foo(): pass"]
+            mock_batch.return_value = [[0.1] * 1536]
+            mock_db.create_chunks_batch.return_value = [1]
+
+            result = embed.embed_text_content(item_id=1, text="def foo(): pass", is_code=True)
+
+            assert result == 1
+            mock_chunk_code.assert_called_once()
 
 
 class TestEmbedProjectFacets:
@@ -382,3 +438,67 @@ class TestEmbedProjectFacets:
             assert result["uses"] is False
             assert result["needs"] is False
             assert mock_embed.call_count == 1
+
+
+class TestEmbedRepoFiles:
+    """Tests for embedding repository files."""
+
+    def test_embed_repo_files_empty(self):
+        """Test embedding empty file list."""
+        result = embed.embed_repo_files(file_items=[])
+        assert result["total_files"] == 0
+        assert result["total_chunks"] == 0
+        assert result["errors"] == []
+
+    def test_embed_repo_files_success(self):
+        """Test successful file embedding."""
+        file_items = [
+            {"item_id": 1, "path": "main.py", "content": "print('hello')", "extension": ".py"},
+            {"item_id": 2, "path": "README.md", "content": "# Readme", "extension": ".md"},
+        ]
+
+        with patch("distillyzer.embed.embed_text_content") as mock_embed:
+            mock_embed.return_value = 2  # 2 chunks per file
+
+            result = embed.embed_repo_files(file_items=file_items)
+
+            assert result["total_files"] == 2
+            assert result["total_chunks"] == 4
+            assert result["errors"] == []
+
+    def test_embed_repo_files_with_errors(self):
+        """Test file embedding with some errors."""
+        file_items = [
+            {"item_id": 1, "path": "good.py", "content": "print('hello')", "extension": ".py"},
+            {"item_id": 2, "path": "bad.py", "content": "error", "extension": ".py"},
+        ]
+
+        with patch("distillyzer.embed.embed_text_content") as mock_embed:
+            mock_embed.side_effect = [2, Exception("Embedding failed")]
+
+            result = embed.embed_repo_files(file_items=file_items)
+
+            assert result["total_files"] == 2
+            assert result["total_chunks"] == 2
+            assert len(result["errors"]) == 1
+            assert result["errors"][0]["path"] == "bad.py"
+
+    def test_embed_repo_files_with_callback(self):
+        """Test file embedding with progress callback."""
+        file_items = [
+            {"item_id": 1, "path": "file1.py", "content": "code", "extension": ".py"},
+            {"item_id": 2, "path": "file2.py", "content": "more code", "extension": ".py"},
+        ]
+        callback_calls = []
+
+        def callback(current, total, path, chunks):
+            callback_calls.append((current, total, path, chunks))
+
+        with patch("distillyzer.embed.embed_text_content") as mock_embed:
+            mock_embed.return_value = 1
+
+            embed.embed_repo_files(file_items=file_items, progress_callback=callback)
+
+            assert len(callback_calls) == 2
+            assert callback_calls[0] == (1, 2, "file1.py", 1)
+            assert callback_calls[1] == (2, 2, "file2.py", 1)

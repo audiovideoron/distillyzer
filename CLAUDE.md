@@ -29,10 +29,11 @@ ruff check src/ --fix
 
 The CLI is invoked via `dz`:
 ```bash
-dz harvest <url>      # Ingest YouTube video or article
+dz harvest <url>      # Ingest YouTube video, GitHub repo, or article
 dz query "question"   # Semantic search with Claude answer
 dz chat               # Interactive conversation mode
 dz stats              # Knowledge base statistics
+dz demo "topic"       # Generate hello-world project from lessons
 dz visualize "concept"  # Generate diagram via Gemini
 ```
 
@@ -47,21 +48,26 @@ User Query → Embed → Similarity Search → Top Chunks → Claude → Answer 
 
 ### Core Modules (src/distillyzer/)
 
-- **cli.py** - Typer CLI entry point. Sub-apps: `skills`, `project`, `sources`, `items`, `suggest`
-- **harvest.py** - Downloads content (yt-dlp for video, trafilatura for articles)
+- **cli.py** - Typer CLI entry point. Sub-apps: `artifacts`, `skills`, `project`, `sources`, `items`, `suggest`
+- **harvest.py** - Downloads content (yt-dlp for video, GitPython for repos, trafilatura for articles)
 - **transcribe.py** - Whisper API transcription with timestamp preservation
 - **embed.py** - OpenAI text-embedding-3-small (1536 dimensions), chunking logic
 - **db.py** - PostgreSQL + pgvector operations, connection pooling
 - **query.py** - Semantic search + Claude answer synthesis
+- **artifacts.py** - Extract patterns from knowledge, scaffold demo projects
 - **visualize.py** - Gemini image generation for concepts
 
 ### Database Schema
 
-Primary tables: `items` (harvested content), `chunks` (embedded segments with vectors), `projects` (faceted organization)
+Primary tables: `items` (harvested content), `chunks` (embedded segments with vectors), `projects` (faceted organization), `artifacts` (extracted patterns)
 
 Vectors stored as 1536-dimensional embeddings using pgvector extension.
 
 ## Key Conventions
+
+### Project Output
+- Commands that produce project output (`demo`, `artifacts scaffold`) default to `~/projects/<project_name>`
+- Directories are created lazily - only when output is actually produced, not before
 
 ### Issue Tracking (bd/beads)
 This project uses `bd` for issue tracking:

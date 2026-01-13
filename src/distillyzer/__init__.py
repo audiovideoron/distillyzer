@@ -1,6 +1,7 @@
 """Distillyzer - Personal learning accelerator.
 
-Harvest knowledge from YouTube and articles. Query it with semantic search.
+Harvest knowledge from YouTube, GitHub, and articles. Query it with semantic search.
+Extract implementation artifacts. Build hello world demos.
 """
 
 __version__ = "0.1.0"
@@ -69,12 +70,14 @@ from .db import (
 from .embed import (
     count_tokens,
     chunk_text,
+    chunk_code,
     get_embedding,
     get_embeddings_batch,
     embed_transcript_chunks,
     embed_project_facets,
     embed_all_projects,
     embed_text_content,
+    embed_repo_files,
     EMBEDDING_MODEL,
     EMBEDDING_DIM,
     EMBEDDING_MODEL_DIMS,
@@ -96,6 +99,7 @@ from .harvest import (
     # Exceptions
     HarvestError,
     YtDlpError,
+    GitCloneError,
     # YouTube
     parse_youtube_url,
     get_video_info,
@@ -103,6 +107,9 @@ from .harvest import (
     search_youtube,
     harvest_video,
     harvest_channel,
+    # GitHub
+    parse_github_url,
+    harvest_repo,
     # Articles
     harvest_article,
 )
@@ -111,6 +118,28 @@ from .harvest import (
 from .transcribe import (
     transcribe_audio,
     segments_to_timed_chunks,
+)
+
+# Extraction
+from .extract import (
+    extract_artifacts,
+    extract_from_item,
+    search_context,
+    ArtifactType,
+)
+
+# Artifacts management
+from .artifacts import (
+    get_artifacts_dir,
+    list_artifact_files,
+    load_artifacts,
+    list_all_artifacts,
+    find_artifact,
+    apply_artifact,
+    search_artifacts,
+    scaffold_project,
+    analyze_for_demo,
+    build_demo,
 )
 
 # Visualization
@@ -222,12 +251,14 @@ __all__ = [
     # Embedding
     "count_tokens",
     "chunk_text",
+    "chunk_code",
     "get_embedding",
     "get_embeddings_batch",
     "embed_transcript_chunks",
     "embed_project_facets",
     "embed_all_projects",
     "embed_text_content",
+    "embed_repo_files",
     "EMBEDDING_MODEL",
     "EMBEDDING_DIM",
     "EMBEDDING_MODEL_DIMS",
@@ -242,6 +273,7 @@ __all__ = [
     # Harvest - Exceptions
     "HarvestError",
     "YtDlpError",
+    "GitCloneError",
     # Harvest - YouTube
     "parse_youtube_url",
     "get_video_info",
@@ -249,11 +281,30 @@ __all__ = [
     "search_youtube",
     "harvest_video",
     "harvest_channel",
+    # Harvest - GitHub
+    "parse_github_url",
+    "harvest_repo",
     # Harvest - Articles
     "harvest_article",
     # Transcribe
     "transcribe_audio",
     "segments_to_timed_chunks",
+    # Extract
+    "extract_artifacts",
+    "extract_from_item",
+    "search_context",
+    "ArtifactType",
+    # Artifacts
+    "get_artifacts_dir",
+    "list_artifact_files",
+    "load_artifacts",
+    "list_all_artifacts",
+    "find_artifact",
+    "apply_artifact",
+    "search_artifacts",
+    "scaffold_project",
+    "analyze_for_demo",
+    "build_demo",
     # Visualize
     "generate_image",
     "generate_from_chunk",
